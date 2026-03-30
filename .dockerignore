@@ -1,0 +1,8 @@
+node_modules
+.env
+pub-docs/
+pub-local/
+.git
+.claude
+.idea
+README.md
