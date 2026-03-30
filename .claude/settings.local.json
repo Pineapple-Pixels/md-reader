@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:3500/health)",
+      "Bash(curl -s http://localhost:3500/pub/)",
+      "Bash(curl -s http://localhost:3500/pub/inicio.md)",
+      "Bash(curl -s \"http://localhost:3500/pub/inicio.md?raw=1\")",
+      "Bash(curl -s \"http://localhost:3500/pub/inicio.md?edit=1\")",
+      "Bash(curl -s -X POST http://localhost:3500/pub/api/publish -H \"Content-Type: application/json\" -d '{\"\"file\"\":\"\"test/prueba.md\"\",\"\"content\"\":\"\"# Prueba API\\\\n\\\\nCreado desde curl.\"\"}')",
+      "Bash(curl -s http://localhost:3500/pub/api/docs)",
+      "Bash(curl -s \"http://localhost:3500/pub/test/prueba.md?raw=1\")",
+      "Bash(curl -s -X POST http://localhost:3500/pub/api/comments -H \"Content-Type: application/json\" -d '{\"\"file\"\":\"\"test/prueba.md\"\",\"\"line\"\":1,\"\"text\"\":\"\"Buen titulo!\"\",\"\"author\"\":\"\"Test\"\"}')",
+      "Bash(curl -s \"http://localhost:3500/pub/api/comments?file=test/prueba.md\")",
+      "Bash(curl -s -X POST http://localhost:3500/pub/api/comments -H \"Content-Type: application/json\" --data-binary \"{\"\"file\"\":\"\"test/prueba.md\"\",\"\"line\"\":1,\"\"text\"\":\"\"Buen titulo\"\",\"\"author\"\":\"\"Test\"\"}\")",
+      "Bash(curl -s -X POST http://localhost:3500/pub/save -H \"Content-Type: application/json\" --data-binary \"{\"\"file\"\":\"\"test/prueba.md\"\",\"\"content\"\":\"\"# Prueba API v2\\\\n\\\\nEditado desde curl.\"\"}\")",
+      "Bash(curl -s -X DELETE http://localhost:3500/pub/api/delete -H \"Content-Type: application/json\" --data-binary \"{\"\"file\"\":\"\"test/prueba.md\"\"}\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3500/pub/test/prueba.md)",
+      "Bash(curl -s -X POST http://localhost:3500/pub/new -H \"Content-Type: application/x-www-form-urlencoded\" -d \"file=notas/test-web.md\" -o /dev/null -w \"redirect: %{redirect_url}, status: %{http_code}\")",
+      "Bash(curl -s \"http://localhost:3500/pub/inicio.md?source\")",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(kill %1)",
+      "Bash(npm run:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(node -e \"import\\(''./src/pub-server.js''\\).then\\(m => console.log\\(''OK: default export is'', typeof m.default\\)\\).catch\\(e => console.error\\(''FAIL:'', e.message\\)\\)\")",
+      "Bash(gh auth:*)",
+      "Bash(where gh:*)",
+      "Bash(winget install:*)"
+    ]
+  }
+}

@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# docwatch - Watch local files/folders and auto-push changes to docs-server
+# Usage:
+#   docwatch file.md                     Watch a single file
+#   docwatch ./my-project/               Watch a folder (all .md files)
+#   docwatch --device mypc ./docs/       Watch with custom device name
+
+set -euo pipefail
+
+# --- Config ---
+DOCS_SERVER="${DOCS_SERVER:-http://localhost:3500}"
+DOCS_DEVICE="${DOCS_DEVICE:-$(hostname)}"
+WATCH_INTERVAL="${WATCH_INTERVAL:-2}"
+
+# --- Parse args ---
+TARGETS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --device) DOCS_DEVICE="$2"; shift 2 ;;
+    --server) DOCS_SERVER="$2"; shift 2 ;;
+    --interval) WATCH_INTERVAL="$2"; shift 2 ;;
+    --help|-h)
+      echo "Usage: docwatch [options] <file.md|folder/>"
+      echo ""
+      echo "Options:"
+      echo "  --device NAME     Device name (default: hostname)"
+      echo "  --server URL      Server URL (default: \$DOCS_SERVER)"
+      echo "  --interval SECS   Poll interval in seconds (default: 2)"
+      echo ""
+      echo "Environment:"
+      echo "  DOCS_SERVER       Server URL"
+      echo "  DOCS_DEVICE       Device name"
+      echo "  WATCH_INTERVAL    Poll interval"
+      exit 0
+      ;;
+    *) TARGETS+=("$1"); shift ;;
+  esac
+done
+
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+  echo "Error: No files or folders specified. Use 'docwatch --help' for usage."
+  exit 1
+fi
+
+# --- Resolve target files ---
+resolve_md_files() {
+  local files=()
+  for target in "${TARGETS[@]}"; do
+    if [[ -d "$target" ]]; then
+      while IFS= read -r -d '' f; do
+        files+=("$f")
+      done < <(find "$target" -name '*.md' -print0)
+    elif [[ -f "$target" ]]; then
+      files+=("$target")
+    else
+      echo "Warning: '$target' not found, skipping"
+    fi
+  done
+  printf '%s\0' "${files[@]}"
+}
+
+# --- Track modification times ---
+declare -A LAST_MODIFIED
+
+get_mtime() {
+  if [[ "$(uname -s)" == *MINGW* || "$(uname -s)" == *MSYS* || "$(uname -s)" == *CYGWIN* ]]; then
+    stat -c %Y "$1" 2>/dev/null || echo 0
+  elif [[ "$(uname -s)" == "Darwin" ]]; then
+    stat -f %m "$1" 2>/dev/null || echo 0
+  else
+    stat -c %Y "$1" 2>/dev/null || echo 0
+  fi
+}
+
+push_file() {
+  local filepath="$1"
+  local content
+  content=$(cat "$filepath")
+
+  # Determine relative path for server
+  local rel_path
+  for target in "${TARGETS[@]}"; do
+    if [[ -d "$target" ]]; then
+      # Strip target dir prefix, keep folder structure
+      local base
+      base=$(cd "$target" && pwd)
+      local full
+      full=$(cd "$(dirname "$filepath")" && pwd)/$(basename "$filepath")
+      if [[ "$full" == "$base"* ]]; then
+        rel_path="${full#$base/}"
+        # Prepend the target folder name
+        local folder_name
+        folder_name=$(basename "$base")
+        rel_path="$folder_name/$rel_path"
+        break
+      fi
+    fi
+  done
+  # Fallback: just the filename
+  rel_path="${rel_path:-$(basename "$filepath")}"
+
+  # JSON encode using python3 or node
+  local json_content
+  json_content=$(printf '%s' "$content" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '%s' "$content" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
+
+  local json_file
+  json_file=$(printf '%s' "$rel_path" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '%s' "$rel_path" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
+
+  local json_device
+  json_device=$(printf '%s' "$DOCS_DEVICE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '%s' "$DOCS_DEVICE" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
+
+  local payload="{\"file\":$json_file,\"content\":$json_content,\"device\":$json_device}"
+
+  local result
+  result=$(curl -s -w "\n%{http_code}" -X POST "$DOCS_SERVER/pub/api/local/push" \
+    -H "Content-Type: application/json" \
+    -d "$payload")
+
+  local http_code
+  http_code=$(echo "$result" | tail -1)
+
+  if [[ "$http_code" == "200" ]]; then
+    echo "  [$(date +%H:%M:%S)] Synced: $rel_path"
+  else
+    local body
+    body=$(echo "$result" | sed '$d')
+    echo "  [$(date +%H:%M:%S)] FAILED ($http_code): $rel_path - $body"
+  fi
+}
+
+# --- Initial sync ---
+echo "docwatch: Watching for changes..."
+echo "  Server:   $DOCS_SERVER"
+echo "  Device:   $DOCS_DEVICE"
+echo "  Interval: ${WATCH_INTERVAL}s"
+echo "  Targets:  ${TARGETS[*]}"
+echo ""
+
+# Build initial file list and do first sync
+while IFS= read -r -d '' filepath; do
+  mtime=$(get_mtime "$filepath")
+  LAST_MODIFIED["$filepath"]="$mtime"
+  push_file "$filepath"
+done < <(resolve_md_files)
+
+echo ""
+echo "  Initial sync done. Watching for changes... (Ctrl+C to stop)"
+echo ""
+
+# --- Watch loop ---
+while true; do
+  sleep "$WATCH_INTERVAL"
+
+  while IFS= read -r -d '' filepath; do
+    mtime=$(get_mtime "$filepath")
+    last="${LAST_MODIFIED[$filepath]:-0}"
+
+    if [[ "$mtime" != "$last" ]]; then
+      LAST_MODIFIED["$filepath"]="$mtime"
+      push_file "$filepath"
+    fi
+  done < <(resolve_md_files)
+
+  # Check for new files
+  while IFS= read -r -d '' filepath; do
+    if [[ -z "${LAST_MODIFIED[$filepath]:-}" ]]; then
+      mtime=$(get_mtime "$filepath")
+      LAST_MODIFIED["$filepath"]="$mtime"
+      echo "  [$(date +%H:%M:%S)] New file detected"
+      push_file "$filepath"
+    fi
+  done < <(resolve_md_files)
+done
