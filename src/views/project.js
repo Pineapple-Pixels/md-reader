@@ -1,9 +1,12 @@
 import { md } from '../lib/config.js';
 import { flattenTree, renderTreeHtml } from '../lib/tree.js';
+import { island } from './layout.js';
 
-export function renderProject(projectName, tree, currentFile, currentContent, { urlPrefix = '/pub/', local = false, apiBase = '' } = {}) {
+export function renderProject(projectName, tree, currentFile, currentContent, { urlPrefix = '/doc/', apiBase = '', isPublic = false } = {}) {
   const rendered = md.render(currentContent);
   const allPages = flattenTree(tree);
+  const homeUrl = isPublic ? '/pub/' : '/';
+  const renderApiBase = isPublic ? '/pub' : '';
 
   let html = `<!DOCTYPE html>
 <html lang="es">
@@ -22,7 +25,6 @@ export function renderProject(projectName, tree, currentFile, currentContent, { 
     .project-toolbar .primary { background: #2563eb; color: white; border-color: #2563eb; }
     .project-toolbar .primary:hover { background: #1d4ed8; }
     .project-toolbar .title { font-weight: 600; font-size: 15px; margin-right: auto; }
-    .local-tag { display: inline-block; background: #fef3c7; color: #92400e; font-size: 11px; padding: 1px 8px; border-radius: 4px; margin-left: 4px; font-weight: 600; }
     .project-body { display: flex; flex: 1; overflow: hidden; }
     .project-sidebar { width: 260px; min-width: 200px; border-right: 1px solid #e0e0e0; overflow-y: auto; background: #f8fafc; padding: 8px 0; flex-shrink: 0; }
     .sidebar-tree { list-style: none; padding: 0; margin: 0; }
@@ -68,10 +70,9 @@ export function renderProject(projectName, tree, currentFile, currentContent, { 
 <body>
 <div class="project-layout">
   <div class="project-toolbar">
-    <a href="/pub/">&#8592; Volver</a>
+    <a href="${homeUrl}">&#8592; Volver</a>
     <span class="title">${projectName}</span>
-    ${local ? '<span class="local-tag">LOCAL</span>' : ''}
-    <button class="primary" onclick="editCurrent()">Editar</button>
+    ${!isPublic ? `<button class="primary" onclick="editCurrent()">Editar</button>` : ''}
   </div>
   <div class="project-body">
     <nav class="project-sidebar">
@@ -87,7 +88,8 @@ export function renderProject(projectName, tree, currentFile, currentContent, { 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
   const URL_PREFIX = ${JSON.stringify(urlPrefix)};
-  const API_BASE = ${JSON.stringify(apiBase)};
+  const API_BASE = ${JSON.stringify(renderApiBase)};
+  const IS_PUBLIC = ${JSON.stringify(isPublic)};
   const ALL_PAGES = ${JSON.stringify(allPages)};
   let currentPage = ${JSON.stringify(currentFile)};
 
@@ -117,14 +119,18 @@ export function renderProject(projectName, tree, currentFile, currentContent, { 
     const content = document.getElementById('doc-content');
     content.innerHTML = '<div class="page-loading">Cargando...</div>';
     try {
-      const res = await fetch(API_BASE + '/api/project/render?folder=' + encodeURIComponent(${JSON.stringify(projectName)}) + '&page=' + encodeURIComponent(page) + (${JSON.stringify(local)} ? '&local=1' : ''));
+      const apiUrl = IS_PUBLIC
+        ? API_BASE + '/api/project/render?folder=' + encodeURIComponent(${JSON.stringify(projectName)}) + '&page=' + encodeURIComponent(page)
+        : '/api/project/render?folder=' + encodeURIComponent(${JSON.stringify(projectName)}) + '&page=' + encodeURIComponent(page);
+      const res = await fetch(apiUrl);
       const data = await res.json();
       if (data.html) {
         content.innerHTML = data.html;
         currentPage = page;
         setActive(page);
         hljs.highlightAll();
-        const newUrl = URL_PREFIX + ${JSON.stringify(projectName)} + '/?page=' + encodeURIComponent(page);
+        const baseUrl = IS_PUBLIC ? '/pub/project/' : '/project/';
+        const newUrl = baseUrl + ${JSON.stringify(projectName)} + '/?page=' + encodeURIComponent(page);
         history.pushState({ page }, '', newUrl);
       }
     } catch(e) {
@@ -142,6 +148,7 @@ export function renderProject(projectName, tree, currentFile, currentContent, { 
 
   hljs.highlightAll();
 </script>
+${isPublic ? '' : island('search')}
 </body>
 </html>`;
   return html;

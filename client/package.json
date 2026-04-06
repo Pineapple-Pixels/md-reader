@@ -1,0 +1,26 @@
+{
+  "name": "md-reader-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build && npx @tailwindcss/cli -i ./app.css -o ../public/css/app.css --minify"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.75.5",
+    "cmdk": "^1.1.1",
+    "minisearch": "^7.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.4",
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.2"
+  }
+}

@@ -1,13 +1,13 @@
 import { pageHead, pageFoot } from './layout.js';
 
-export function renderEditor(file, content, { urlPrefix = '/pub/', saveEndpoint = '/pub/save', local = false } = {}) {
+export function renderEditor(file, content, { urlPrefix = '/doc/', saveEndpoint = '/save' } = {}) {
   let html = pageHead(`Editando: ${file}`);
   html += `<div class="toolbar">
-    <a href="/pub/">Volver</a>
-    ${local ? '<span class="local-tag">LOCAL</span>' : ''}
+    <a href="/">Volver</a>
     <a href="${urlPrefix}${file}">Ver renderizado</a>
     <button class="primary" onclick="saveDoc()">Guardar</button>
-    <span id="save-status" style="font-size:13px;color:#888;align-self:center;margin-left:4px;"></span>
+    <span id="save-status" style="font-size:13px;color:var(--text-muted);align-self:center;margin-left:4px;"></span>
+    <button class="theme-toggle" onclick="toggleTheme()"></button>
   </div>`;
   html += `<div class="editor-wrap">
     <textarea id="editor">${content.replace(/</g, '&lt;')}</textarea>
@@ -37,14 +37,14 @@ export function renderEditor(file, content, { urlPrefix = '/pub/', saveEndpoint 
       clearTimeout(autoSaveTimer);
       status.textContent = 'Sin guardar...';
       status.style.color = '#d97706';
-      autoSaveTimer = setTimeout(() => autoSave(), 3000);
+      autoSaveTimer = setTimeout(() => autoSave(), 2000);
     });
 
     async function autoSave() {
       if (saving) return;
       saving = true;
       status.textContent = 'Guardando...';
-      status.style.color = '#888';
+      status.style.color = 'var(--text-muted)';
       try {
         const res = await fetch(SAVE_URL, {
           method: 'POST',
@@ -55,10 +55,12 @@ export function renderEditor(file, content, { urlPrefix = '/pub/', saveEndpoint 
         if (data.ok) {
           status.textContent = 'Guardado';
           status.style.color = '#16a34a';
+          showToast('Guardado automatico', 'success');
         }
       } catch(e) {
         status.textContent = 'Error al guardar';
-        status.style.color = '#dc2626';
+        status.style.color = 'var(--danger)';
+        showToast('Error al guardar', 'error');
       }
       saving = false;
     }
@@ -68,7 +70,7 @@ export function renderEditor(file, content, { urlPrefix = '/pub/', saveEndpoint 
       if (saving) return;
       saving = true;
       status.textContent = 'Guardando...';
-      status.style.color = '#888';
+      status.style.color = 'var(--text-muted)';
       try {
         const res = await fetch(SAVE_URL, {
           method: 'POST',
@@ -76,14 +78,18 @@ export function renderEditor(file, content, { urlPrefix = '/pub/', saveEndpoint 
           body: JSON.stringify({ file: ${JSON.stringify(file)}, content: editor.value })
         });
         const data = await res.json();
-        if (data.ok) window.location.href = VIEW_URL;
+        if (data.ok) {
+          showToast('Documento guardado', 'success');
+          window.location.href = VIEW_URL;
+        }
       } catch(e) {
         status.textContent = 'Error al guardar';
-        status.style.color = '#dc2626';
+        status.style.color = 'var(--danger)';
+        showToast('Error al guardar', 'error');
       }
       saving = false;
     }
   </script>`;
-  html += pageFoot();
+  html += pageFoot({ private: true });
   return html;
 }

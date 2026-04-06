@@ -61,22 +61,51 @@ export function firstFileInTree(items) {
   return null;
 }
 
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJsString(s) {
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e');
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function renderTreeHtml(items, depth = 0) {
   let html = '';
   for (const item of items) {
     if (item.type === 'folder') {
       const firstFile = firstFileInTree(item.children);
-      const loadAttr = firstFile ? `loadPage('${firstFile}');` : '';
+      const loadAttr = firstFile ? `loadPage('${escapeAttr(escapeJsString(firstFile))}');` : '';
       html += `<li class="tree-folder tree-indent-${depth} collapsed">
         <div class="tree-item" onclick="toggleFolder(this.parentElement);${loadAttr}">
-          <span class="tree-chevron">&#9654;</span><span class="tree-icon">&#128193;</span>${item.name}
+          <span class="tree-chevron">&#9654;</span><span class="tree-icon">&#128193;</span>${escapeHtml(item.name)}
         </div>
         <ul class="sidebar-tree tree-children">${renderTreeHtml(item.children, depth + 1)}</ul>
       </li>`;
     } else {
+      const pathAttr = escapeAttr(item.path);
+      const pathJs = escapeAttr(escapeJsString(item.path));
       html += `<li class="tree-indent-${depth}">
-        <a class="tree-item" href="#" data-page="${item.path}" onclick="loadPage('${item.path}');return false;">
-          <span class="tree-icon">&#128196;</span>${item.name}
+        <a class="tree-item" href="#" data-page="${pathAttr}" onclick="loadPage('${pathJs}');return false;">
+          <span class="tree-icon">&#128196;</span>${escapeHtml(item.name)}
         </a>
       </li>`;
     }

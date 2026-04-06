@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # docpull - Pull markdown files from docs-server
 # Usage:
-#   docpull file.md                        Pull local doc (from your device)
-#   docpull --cloud file.md                Pull cloud doc
-#   docpull --device mypc file.md          Pull from specific device
+#   docpull file.md                        Pull doc
 #   docpull --output ./docs/ file.md       Save to specific directory
 
 set -euo pipefail
 
 # --- Config ---
 DOCS_SERVER="${DOCS_SERVER:-https://tu-dominio.com}"
-DOCS_DEVICE="${DOCS_DEVICE:-$(hostname)}"
-CLOUD=false
+DOCS_TOKEN="${DOCS_TOKEN:-}"
 OUTPUT_DIR="."
 
 # --- Parse args ---
@@ -19,22 +16,20 @@ FILES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cloud) CLOUD=true; shift ;;
-    --device) DOCS_DEVICE="$2"; shift 2 ;;
     --server) DOCS_SERVER="$2"; shift 2 ;;
+    --token) DOCS_TOKEN="$2"; shift 2 ;;
     --output|-o) OUTPUT_DIR="$2"; shift 2 ;;
     --help|-h)
       echo "Usage: docpull [options] <file.md>"
       echo ""
       echo "Options:"
-      echo "  --cloud         Pull from cloud docs (default: local)"
-      echo "  --device NAME   Device name for local docs (default: hostname)"
       echo "  --server URL    Server URL (default: \$DOCS_SERVER)"
+      echo "  --token TOKEN   Auth token (default: \$DOCS_TOKEN)"
       echo "  --output DIR    Output directory (default: current dir)"
       echo ""
       echo "Environment:"
       echo "  DOCS_SERVER     Server URL"
-      echo "  DOCS_DEVICE     Device name"
+      echo "  DOCS_TOKEN      Auth token"
       exit 0
       ;;
     *) FILES+=("$1"); shift ;;
@@ -46,33 +41,26 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
   exit 1
 fi
 
+if [[ -z "$DOCS_TOKEN" ]]; then
+  echo "Error: Auth token required. Set DOCS_TOKEN or use --token."
+  exit 1
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 for filename in "${FILES[@]}"; do
-  if [[ "$CLOUD" == "true" ]]; then
-    url="$DOCS_SERVER/pub/api/download?file=$(printf '%s' "$filename" | sed 's/ /%20/g')"
-    echo -n "Pulling $filename from cloud... "
-    result=$(curl -s -w "\n%{http_code}" "$url")
-  else
-    file_param="$DOCS_DEVICE/$filename"
-    url="$DOCS_SERVER/pub/api/local/pull?file=$(printf '%s' "$file_param" | sed 's/ /%20/g')"
-    echo -n "Pulling $filename from local ($DOCS_DEVICE)... "
-    result=$(curl -s -w "\n%{http_code}" "$url")
-  fi
+  url="$DOCS_SERVER/api/pull?file=$(printf '%s' "$filename" | sed 's/ /%20/g')"
+  echo -n "Pulling $filename... "
 
+  result=$(curl -s -w "\n%{http_code}" "$url" -H "X-Pub-Token: $DOCS_TOKEN")
   http_code=$(echo "$result" | tail -1)
   body=$(echo "$result" | sed '$d')
 
   if [[ "$http_code" == "200" ]]; then
     output_path="$OUTPUT_DIR/$filename"
     mkdir -p "$(dirname "$output_path")"
-    if [[ "$CLOUD" == "true" ]]; then
-      printf '%s' "$body" > "$output_path"
-    else
-      # API returns JSON, extract content
-      printf '%s' "$body" | python3 -c 'import sys,json; print(json.loads(sys.stdin.read())["content"], end="")' 2>/dev/null > "$output_path" \
-        || printf '%s' "$body" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{process.stdout.write(JSON.parse(d).content)})' > "$output_path"
-    fi
+    printf '%s' "$body" | python3 -c 'import sys,json; print(json.loads(sys.stdin.read())["content"], end="")' 2>/dev/null > "$output_path" \
+      || printf '%s' "$body" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{process.stdout.write(JSON.parse(d).content)})' > "$output_path"
     echo "OK → $output_path"
   else
     echo "FAILED ($http_code): $body"

@@ -1,4 +1,4 @@
-export function renderFileList(files, { urlPrefix = '/pub/', projectPrefix = '/pub/project/', actions = [] } = {}) {
+export function renderFileList(files, { urlPrefix = '/pub/', projectPrefix = '/pub/project/', actions = [], meta = {} } = {}) {
   const rootFiles = files.filter(f => !f.name.includes('/'));
   const folders = {};
   for (const f of files) {
@@ -15,7 +15,9 @@ export function renderFileList(files, { urlPrefix = '/pub/', projectPrefix = '/p
     html += `<ul class="file-list">`;
     html += `<li><a href="${projectPrefix}${folder}/" style="font-weight:600"><span class="tree-icon">&#128193;</span> ${folder}/</a><span class="meta">${docs.length} docs &middot; ${latestDate}</span>`;
     for (const action of actions) {
-      html += ` <button class="action-btn ${action.cls || ''}" onclick="${action.onclick(folder)}">${action.label}</button>`;
+      const label = typeof action.label === 'function' ? action.label(folder) : action.label;
+      const cls = typeof action.cls === 'function' ? action.cls(folder) : action.cls;
+      html += ` <button class="action-btn ${cls || ''}" onclick="${action.onclick(folder)}">${label}</button>`;
     }
     html += `</li></ul>`;
   }
@@ -27,60 +29,12 @@ export function renderFileList(files, { urlPrefix = '/pub/', projectPrefix = '/p
       const date = new Date(doc.modified).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       html += `<li><a href="${urlPrefix}${doc.name}">${displayName}</a><span class="meta">${date}</span>`;
       for (const action of actions) {
-        html += ` <button class="action-btn ${action.cls || ''}" onclick="${action.onclick(doc.name)}">${action.label}</button>`;
+        const label = typeof action.label === 'function' ? action.label(doc.name) : action.label;
+        const cls = typeof action.cls === 'function' ? action.cls(doc.name) : action.cls;
+        html += ` <button class="action-btn ${cls || ''}" onclick="${action.onclick(doc.name)}">${label}</button>`;
       }
       html += `</li>`;
     }
-    html += `</ul>`;
-  }
-  return html;
-}
-
-export function renderLocalFileList(files) {
-  const byDevice = {};
-  for (const f of files) {
-    const parts = f.name.split('/');
-    const device = parts[0];
-    if (!byDevice[device]) byDevice[device] = [];
-    byDevice[device].push(f);
-  }
-
-  let html = '';
-  for (const [device, docs] of Object.entries(byDevice)) {
-    html += `<div class="folder-name">&#128187; ${device}</div>`;
-    html += `<ul class="file-list">`;
-
-    const rootFiles = [];
-    const subFolders = {};
-    for (const doc of docs) {
-      const parts = doc.name.split('/');
-      const innerParts = parts.slice(1);
-      if (innerParts.length === 1) {
-        rootFiles.push(doc);
-      } else {
-        const folder = innerParts[0];
-        if (!subFolders[folder]) subFolders[folder] = [];
-        subFolders[folder].push(doc);
-      }
-    }
-
-    for (const [folder, folderDocs] of Object.entries(subFolders)) {
-      const latestDate = new Date(Math.max(...folderDocs.map(d => new Date(d.modified)))).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      html += `<li><a href="/pub/local/project/${device}/${folder}/" style="font-weight:600"><span class="tree-icon">&#128193;</span> ${folder}/</a><span class="meta">${folderDocs.length} docs &middot; ${latestDate}</span>`;
-      html += ` <button class="action-btn publish-btn" onclick="publishLocal('${device}/${folder}')">Publicar</button>`;
-      html += ` <button class="action-btn delete-btn" onclick="deleteLocal('${device}/${folder}', true)">Eliminar</button>`;
-      html += `</li>`;
-    }
-
-    for (const doc of rootFiles) {
-      const displayName = doc.name.split('/').pop();
-      const date = new Date(doc.modified).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      html += `<li><a href="/pub/local/${doc.name}">${displayName}</a><span class="meta">${date}</span>`;
-      html += ` <button class="action-btn publish-btn" onclick="publishLocal('${doc.name}')">Publicar</button>`;
-      html += ` <button class="action-btn delete-btn" onclick="deleteLocal('${doc.name}')">Eliminar</button>`;
-      html += `</li>`;
-    }
-
     html += `</ul>`;
   }
   return html;

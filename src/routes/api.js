@@ -1,18 +1,127 @@
 import { Router } from 'express';
+import { readFile, writeFile, unlink, rm, stat } from 'fs/promises';
+import { dirname } from 'path';
+import { existsSync } from 'fs';
 import { randomUUID } from 'crypto';
+import { PUB_DIR, md } from '../lib/config.js';
+import { resolveDoc, getFiles, ensureDir, saveVersion } from '../lib/storage.js';
 import { getComments, saveComments } from '../lib/comments.js';
+import { requireTokenOrAuth } from '../lib/auth.js';
+import { toggleVisibility, removeMeta } from '../lib/meta.js';
+import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 
 const router = Router();
 
-// API: Get comments
-router.get('/api/comments', async (req, res) => {
+// All API routes require auth (cookie or token)
+router.use(requireTokenOrAuth);
+
+// Search index
+router.get('/search-index', async (req, res) => {
+  const index = await getSearchIndex();
+  res.json(index);
+});
+
+// List all docs
+router.get('/docs', async (req, res) => {
+  const files = await getFiles(PUB_DIR);
+  res.json(files);
+});
+
+// Download doc
+router.get('/download', async (req, res) => {
+  const { file } = req.query;
+  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const filePath = resolveDoc(file);
+  if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  const content = await readFile(filePath, 'utf-8');
+  const rawName = file.split('/').pop();
+  const safeName = (rawName || '').replace(/[^a-zA-Z0-9._-]/g, '') || 'document.md';
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.type('text/markdown').send(content);
+});
+
+// Upload/push doc (replaces local/push and publish)
+router.post('/push', async (req, res) => {
+  const { file, content } = req.body;
+  if (!file || content === undefined) return res.status(400).json({ error: 'file y content son requeridos' });
+  const filePath = resolveDoc(file);
+  if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  await ensureDir(dirname(filePath));
+  if (existsSync(filePath)) {
+    const old = await readFile(filePath, 'utf-8');
+    await saveVersion(filePath, old);
+  }
+  await writeFile(filePath, content);
+  invalidateSearchIndex();
+  res.json({ ok: true, url: `/doc/${file}` });
+});
+
+// Pull doc
+router.get('/pull', async (req, res) => {
+  const { file } = req.query;
+  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const filePath = resolveDoc(file);
+  if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  const content = await readFile(filePath, 'utf-8');
+  res.json({ file, content });
+});
+
+// Toggle visibility
+router.post('/toggle-visibility', async (req, res) => {
+  const { file } = req.body;
+  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const isNowPublic = await toggleVisibility(file);
+  invalidateSearchIndex();
+  res.json({ ok: true, public: isNowPublic });
+});
+
+// Delete doc or folder
+router.delete('/delete', async (req, res) => {
+  const { file } = req.body;
+  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const filePath = resolveDoc(file);
+  if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  const stats = await stat(filePath);
+  if (stats.isDirectory()) {
+    const files = await getFiles(filePath);
+    for (const f of files) {
+      const fPath = resolveDoc(f.name);
+      if (fPath && existsSync(fPath)) {
+        const content = await readFile(fPath, 'utf-8');
+        await saveVersion(fPath, content);
+      }
+      await removeMeta(f.name);
+    }
+    await rm(filePath, { recursive: true });
+  } else {
+    const content = await readFile(filePath, 'utf-8');
+    await saveVersion(filePath, content);
+    await unlink(filePath);
+    await removeMeta(file);
+  }
+  invalidateSearchIndex();
+  res.json({ ok: true });
+});
+
+// Render project page (for SPA navigation)
+router.get('/project/render', async (req, res) => {
+  const { folder, page } = req.query;
+  if (!folder || !page) return res.status(400).json({ error: 'folder y page son requeridos' });
+  const filePath = resolveDoc(page);
+  if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: 'Pagina no encontrada' });
+  const content = await readFile(filePath, 'utf-8');
+  const rendered = md.render(content);
+  res.json({ html: rendered, file: page });
+});
+
+// Comments
+router.get('/comments', async (req, res) => {
   const { file } = req.query;
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   res.json(await getComments(file));
 });
 
-// API: Add comment
-router.post('/api/comments', async (req, res) => {
+router.post('/comments', async (req, res) => {
   const { file, text, line, author } = req.body;
   if (!file || !text) return res.status(400).json({ error: 'file y text son requeridos' });
   const comments = await getComments(file);
@@ -21,8 +130,7 @@ router.post('/api/comments', async (req, res) => {
   res.json({ ok: true });
 });
 
-// API: Delete comment
-router.post('/api/comments/delete', async (req, res) => {
+router.post('/comments/delete', async (req, res) => {
   const { file, id } = req.body;
   if (!file || !id) return res.status(400).json({ error: 'file y id son requeridos' });
   let comments = await getComments(file);

@@ -9,12 +9,6 @@ export function resolveDoc(file, baseDir = PUB_DIR) {
   return resolved;
 }
 
-export function checkToken(req, token) {
-  if (!token) return true;
-  const t = req.headers['x-pub-token'] || req.query.token;
-  return t === token;
-}
-
 export async function ensureDir(dir) {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }

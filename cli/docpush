@@ -1,40 +1,32 @@
 #!/usr/bin/env bash
 # docpush - Push markdown files to docs-server
 # Usage:
-#   docpush file.md                    Push to local docs
-#   docpush --publish file.md          Push directly to cloud
+#   docpush file.md                    Push file to server
 #   docpush folder/                    Push all .md files in folder
-#   docpush --device mypc file.md      Push with custom device name
+#   docpush --token TOKEN file.md      Push with auth token
 
 set -euo pipefail
 
 # --- Config (override with env vars) ---
 DOCS_SERVER="${DOCS_SERVER:-https://tu-dominio.com}"
-DOCS_DEVICE="${DOCS_DEVICE:-$(hostname)}"
 DOCS_TOKEN="${DOCS_TOKEN:-}"
 
 # --- Parse args ---
-PUBLISH=false
 FILES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --publish) PUBLISH=true; shift ;;
-    --device) DOCS_DEVICE="$2"; shift 2 ;;
     --server) DOCS_SERVER="$2"; shift 2 ;;
     --token) DOCS_TOKEN="$2"; shift 2 ;;
     --help|-h)
       echo "Usage: docpush [options] <file.md|folder/>"
       echo ""
       echo "Options:"
-      echo "  --publish       Push directly to cloud (persistent)"
-      echo "  --device NAME   Device name (default: hostname)"
       echo "  --server URL    Server URL (default: \$DOCS_SERVER)"
       echo "  --token TOKEN   Auth token (default: \$DOCS_TOKEN)"
       echo ""
       echo "Environment:"
       echo "  DOCS_SERVER     Server URL"
-      echo "  DOCS_DEVICE     Device name"
       echo "  DOCS_TOKEN      Auth token"
       exit 0
       ;;
@@ -44,6 +36,11 @@ done
 
 if [[ ${#FILES[@]} -eq 0 ]]; then
   echo "Error: No files specified. Use 'docpush --help' for usage."
+  exit 1
+fi
+
+if [[ -z "$DOCS_TOKEN" ]]; then
+  echo "Error: Auth token required. Set DOCS_TOKEN or use --token."
   exit 1
 fi
 
@@ -67,28 +64,23 @@ if [[ ${#EXPANDED[@]} -eq 0 ]]; then
 fi
 
 # --- Push files ---
-HEADERS=(-H "Content-Type: application/json")
-if [[ -n "$DOCS_TOKEN" ]]; then
-  HEADERS+=(-H "X-Pub-Token: $DOCS_TOKEN")
-fi
-
 for filepath in "${EXPANDED[@]}"; do
   filename=$(basename "$filepath")
   content=$(cat "$filepath")
-  # Escape content for JSON
-  json_content=$(printf '%s' "$content" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null || printf '%s' "$content" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
 
-  if [[ "$PUBLISH" == "true" ]]; then
-    url="$DOCS_SERVER/pub/api/publish"
-    payload="{\"file\":$( printf '%s' "$filename" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null || printf '%s' "$filename" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' ),\"content\":$json_content}"
-    echo -n "Publishing $filename to cloud... "
-  else
-    url="$DOCS_SERVER/pub/api/local/push"
-    payload="{\"file\":$( printf '%s' "$filename" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null || printf '%s' "$filename" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' ),\"content\":$json_content,\"device\":$(printf '%s' "$DOCS_DEVICE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null || printf '%s' "$DOCS_DEVICE" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' )}"
-    echo -n "Pushing $filename to local ($DOCS_DEVICE)... "
-  fi
+  json_content=$(printf '%s' "$content" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '%s' "$content" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
+  json_file=$(printf '%s' "$filename" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null \
+    || printf '%s' "$filename" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>console.log(JSON.stringify(d)))' 2>/dev/null)
 
-  result=$(curl -s -w "\n%{http_code}" -X POST "$url" "${HEADERS[@]}" -d "$payload")
+  payload="{\"file\":$json_file,\"content\":$json_content}"
+  echo -n "Pushing $filename... "
+
+  result=$(curl -s -w "\n%{http_code}" -X POST "$DOCS_SERVER/api/push" \
+    -H "Content-Type: application/json" \
+    -H "X-Pub-Token: $DOCS_TOKEN" \
+    -d "$payload")
+
   http_code=$(echo "$result" | tail -1)
   body=$(echo "$result" | sed '$d')
 
