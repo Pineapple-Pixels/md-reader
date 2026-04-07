@@ -10,7 +10,7 @@ export function EditorPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const file = location.pathname.replace(/^\/edit\//, '');
+  const file = decodeURIComponent(location.pathname.replace(/^\/edit\//, ''));
 
   const { data, isLoading } = useQuery({
     queryKey: ['doc-raw', file],

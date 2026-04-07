@@ -28,8 +28,8 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
   const queryClient = useQueryClient();
 
   const file = isPublic
-    ? location.pathname.replace(/^\/pub\/source\//, '')
-    : location.pathname.replace(/^\/source\//, '');
+    ? decodeURIComponent(location.pathname.replace(/^\/pub\/source\//, ''))
+    : decodeURIComponent(location.pathname.replace(/^\/source\//, ''));
 
   const { data, isLoading } = useQuery<SourceData>({
     queryKey: ['source', file, isPublic],

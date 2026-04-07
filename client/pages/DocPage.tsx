@@ -24,9 +24,10 @@ export function DocPage({ isPublic = false }: DocPageProps) {
   const queryClient = useQueryClient();
 
   // Extract file path from URL: /doc/some/file.md or /pub/some/file.md
+  // decodeURIComponent needed because location.pathname is percent-encoded by the browser
   const file = isPublic
-    ? location.pathname.replace(/^\/pub\//, '')
-    : location.pathname.replace(/^\/doc\//, '');
+    ? decodeURIComponent(location.pathname.replace(/^\/pub\//, ''))
+    : decodeURIComponent(location.pathname.replace(/^\/doc\//, ''));
 
   const apiUrl = isPublic ? `/public/render?file=${encodeURIComponent(file)}` : `/render?file=${encodeURIComponent(file)}`;
 
