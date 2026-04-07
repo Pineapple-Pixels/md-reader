@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install server deps
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Install client deps and build
 COPY client/package*.json ./client/
