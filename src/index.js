@@ -2,11 +2,11 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { login, COOKIE_NAME, requireAuth } from './lib/auth.js';
-import { renderLogin } from './views/login.js';
-import pubRouter from './routes/public.js';
-import privRouter from './routes/private.js';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
 import apiRouter from './routes/api.js';
+import publicApiRouter from './routes/public-api.js';
 
 const app = express();
 
@@ -16,10 +16,7 @@ app.use(express.static('public', {
   immutable: process.env.NODE_ENV === 'production',
 }));
 
-// Helmet con CSP ajustado al uso real:
-// - 'unsafe-inline' en style-src: las vistas usan estilos inline
-// - 'unsafe-inline' en script-src: las vistas generan scripts inline (doc.js, editor.js, project.js, etc.)
-// - cdnjs.cloudflare.com permitido para highlight.js cargado desde layout/project
+// Helmet con CSP ajustado:
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -38,7 +35,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Rate limit solo para el login para prevenir brute-force
+// Rate limit para login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -50,32 +47,47 @@ const loginLimiter = rateLimit({
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Auth routes
-app.get('/login', (req, res) => res.send(renderLogin()));
+// Auth API endpoints
+app.get('/api/auth/me', (req, res) => {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (!token) return res.json({ authenticated: false });
+  const decoded = verifyToken(token);
+  if (decoded) return res.json({ authenticated: true, user: decoded.user });
+  res.json({ authenticated: false });
+});
 
 app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { user, pass } = req.body;
   const token = login(user, pass);
-  if (!token) return res.send(renderLogin('Usuario o contrasena incorrectos'));
+  if (!token) return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
   res.cookie(COOKIE_NAME, token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'strict' });
-  res.redirect('/');
+  res.json({ ok: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie(COOKIE_NAME);
-  res.redirect('/login');
+  res.json({ ok: true });
 });
 
-// Public routes (no auth)
-app.use('/pub', pubRouter);
+// Public API routes (no auth)
+app.use('/api/public', publicApiRouter);
 
-// Private routes (auth required)
+// Private API routes (auth required)
 app.use('/api', apiRouter);
-app.use('/', requireAuth, privRouter);
+
+// SPA fallback: serve index.html for all other routes
+const spaHtml = resolve('public', 'index.html');
+app.get('/{*path}', (req, res) => {
+  if (existsSync(spaHtml)) {
+    res.sendFile(spaHtml);
+  } else {
+    res.status(404).send('Build the client first: npm run build');
+  }
+});
 
 app.use((err, req, res, next) => {
   console.error('ERROR:', err.message, err.stack);
-  res.status(500).send('Error: ' + err.message);
+  res.status(500).json({ error: err.message });
 });
 
 const PORT = process.env.PORT || 3500;

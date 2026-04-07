@@ -14,8 +14,9 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["./shared/*"],
-      "@islands/*": ["./islands/*"]
+      "@/*": ["./*"]
     }
   },
-  "include": ["islands/**/*", "shared/**/*", "vite-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "vite-env.d.ts"],
+  "exclude": ["node_modules", "vite.config.ts"]
 }

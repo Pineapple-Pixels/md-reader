@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import MiniSearch from 'minisearch';
 import { apiFetch } from '@shared/api';
@@ -9,6 +10,7 @@ export function SearchModal() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   const { data: entries = [] } = useQuery<SearchEntry[]>({
     queryKey: ['search-index'],
@@ -31,7 +33,6 @@ export function SearchModal() {
     return miniSearch.search(query).map((r) => entries[r.id as number]);
   }, [query, miniSearch, entries]);
 
-  // Cmd+K / Ctrl+K
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -44,7 +45,6 @@ export function SearchModal() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Auto-focus + reset on open
   useEffect(() => {
     if (open) {
       setQuery('');
@@ -54,8 +54,9 @@ export function SearchModal() {
 
   if (!open) return null;
 
-  function navigate(file: string) {
-    window.location.href = `/doc/${file}`;
+  function handleNavigate(file: string) {
+    setOpen(false);
+    navigate(`/doc/${file}`);
   }
 
   function highlight(text: string, q: string) {
@@ -85,13 +86,13 @@ export function SearchModal() {
               <Command.Empty className="search-empty">Cargando...</Command.Empty>
             )}
             {entries.length > 0 && results.length === 0 && (
-              <Command.Empty className="search-empty">Sin resultados para "{query}"</Command.Empty>
+              <Command.Empty className="search-empty">Sin resultados para &quot;{query}&quot;</Command.Empty>
             )}
             {results.map((entry) => (
               <Command.Item
                 key={entry.file}
                 value={entry.file}
-                onSelect={() => navigate(entry.file)}
+                onSelect={() => handleNavigate(entry.file)}
                 className="search-item"
               >
                 <div className="search-item-header">
@@ -108,8 +109,8 @@ export function SearchModal() {
             ))}
           </Command.List>
           <div className="search-footer">
-            <span><kbd>↑↓</kbd> navegar</span>
-            <span><kbd>↵</kbd> abrir</span>
+            <span><kbd>&uarr;&darr;</kbd> navegar</span>
+            <span><kbd>&crarr;</kbd> abrir</span>
             <span><kbd>esc</kbd> cerrar</span>
           </div>
         </Command>

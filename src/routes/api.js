@@ -7,8 +7,9 @@ import { PUB_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles, ensureDir, saveVersion } from '../lib/storage.js';
 import { getComments, saveComments } from '../lib/comments.js';
 import { requireTokenOrAuth } from '../lib/auth.js';
-import { toggleVisibility, removeMeta } from '../lib/meta.js';
+import { toggleVisibility, removeMeta, getMeta } from '../lib/meta.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
+import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
 
 const router = Router();
 
@@ -27,6 +28,25 @@ router.get('/docs', async (req, res) => {
   res.json(files);
 });
 
+// Get metadata (visibility info)
+router.get('/meta', async (req, res) => {
+  const meta = await getMeta();
+  res.json(meta);
+});
+
+// Render a single doc to HTML
+router.get('/render', async (req, res) => {
+  const { file } = req.query;
+  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const filePath = resolveDoc(file);
+  if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  const content = await readFile(filePath, 'utf-8');
+  const html = md.render(content);
+  const comments = await getComments(file);
+  const meta = await getMeta();
+  res.json({ html, commentCount: comments.length, isFilePublic: !!meta[file]?.public });
+});
+
 // Download doc
 router.get('/download', async (req, res) => {
   const { file } = req.query;
@@ -40,7 +60,7 @@ router.get('/download', async (req, res) => {
   res.type('text/markdown').send(content);
 });
 
-// Upload/push doc (replaces local/push and publish)
+// Upload/push doc
 router.post('/push', async (req, res) => {
   const { file, content } = req.body;
   if (!file || content === undefined) return res.status(400).json({ error: 'file y content son requeridos' });
@@ -56,7 +76,22 @@ router.post('/push', async (req, res) => {
   res.json({ ok: true, url: `/doc/${file}` });
 });
 
-// Pull doc
+// Save doc (with version backup)
+router.post('/save', async (req, res) => {
+  const { file, content } = req.body;
+  if (!file || content === undefined) return res.status(400).json({ error: 'file y content son requeridos' });
+  const filePath = resolveDoc(file);
+  if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  if (existsSync(filePath)) {
+    const old = await readFile(filePath, 'utf-8');
+    await saveVersion(filePath, old);
+  }
+  await writeFile(filePath, content);
+  invalidateSearchIndex();
+  res.json({ ok: true });
+});
+
+// Pull doc (raw content)
 router.get('/pull', async (req, res) => {
   const { file } = req.query;
   if (!file) return res.status(400).json({ error: 'file es requerido' });
@@ -103,7 +138,28 @@ router.delete('/delete', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Render project page (for SPA navigation)
+// Project data (tree + initial page)
+router.get('/project', async (req, res) => {
+  const { folder } = req.query;
+  if (!folder) return res.status(400).json({ error: 'folder es requerido' });
+  const folderPath = resolveDoc(folder);
+  if (!folderPath || !existsSync(folderPath)) return res.status(404).json({ error: 'Carpeta no encontrada' });
+
+  const tree = await buildTree(folderPath, folder);
+  const mainPage = findMainPage(tree, folder);
+  if (!mainPage) return res.status(404).json({ error: 'No se encontraron archivos .md' });
+
+  const activeFilePath = resolveDoc(mainPage);
+  if (!activeFilePath || !existsSync(activeFilePath)) return res.status(404).json({ error: 'Pagina no encontrada' });
+
+  const content = await readFile(activeFilePath, 'utf-8');
+  const html = md.render(content);
+  const allPages = flattenTree(tree);
+
+  res.json({ tree, html, currentFile: mainPage, allPages });
+});
+
+// Render project page (for SPA navigation within project)
 router.get('/project/render', async (req, res) => {
   const { folder, page } = req.query;
   if (!folder || !page) return res.status(400).json({ error: 'folder y page son requeridos' });

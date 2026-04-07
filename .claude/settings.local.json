@@ -53,7 +53,17 @@
       "Bash(timeout 5 node --env-file=.env src/index.js)",
       "Bash(node --env-file=.env -e ':*)",
       "Bash(node -e ':*)",
-      "Bash(timeout 5 node src/index.js)"
+      "Bash(timeout 5 node src/index.js)",
+      "Bash(node src/index.js)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(npx tsc:*)",
+      "Bash(rm -f public/js/hello.js public/js/search.js public/css/app.css)",
+      "Bash(rm -rf public/js/chunks/)",
+      "Bash(rm -rf src/views)",
+      "Bash(rm -f src/routes/private.js src/routes/public.js)",
+      "Bash(rm -rf islands)",
+      "Bash(rm -f shared/mount.ts)",
+      "Bash(find .:*)"
     ]
   }
 }
