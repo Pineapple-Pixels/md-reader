@@ -1,7 +1,8 @@
 node_modules
+client/node_modules
 .env
 pub-docs/
-pub-local/
+public/
 .git
 .claude
 .idea
