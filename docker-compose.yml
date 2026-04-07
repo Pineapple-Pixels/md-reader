@@ -2,9 +2,11 @@ services:
   app:
     build: .
     restart: unless-stopped
-    env_file: .env
+    ports:
+      - "3500:3500"
     volumes:
       - pub-docs:/app/pub-docs
+      - pub-local:/app/pub-local
     expose:
       - "3500"
 
@@ -34,5 +36,6 @@ services:
 
 volumes:
   pub-docs:
+  pub-local:
   certbot-certs:
   certbot-www:
