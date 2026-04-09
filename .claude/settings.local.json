@@ -63,7 +63,16 @@
       "Bash(rm -f src/routes/private.js src/routes/public.js)",
       "Bash(rm -rf islands)",
       "Bash(rm -f shared/mount.ts)",
-      "Bash(find .:*)"
+      "Bash(find .:*)",
+      "Bash(find:*)",
+      "Bash(node:*)",
+      "Bash(ls client/tsconfig*.json)",
+      "Bash(npm start:*)",
+      "Bash(powershell:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }
