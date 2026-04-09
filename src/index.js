@@ -10,13 +10,15 @@ import publicApiRouter from './routes/public-api.js';
 
 const app = express();
 
-// Static assets (Vite builds → public/)
-app.use(express.static('public', {
-  maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0,
-  immutable: process.env.NODE_ENV === 'production',
-}));
-
-// Helmet con CSP ajustado:
+// Helmet con CSP ajustado.
+// scriptSrc: no 'unsafe-inline' — el unico inline script (tema) va por hash.
+// styleSrc: mantiene 'unsafe-inline' porque los componentes React usan
+// `style={{}}` (inline styles) por todos lados; cambiarlo requiere un refactor.
+// Hash sha256 del bloque <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+// en client/index.html. Si ese bloque se toca, recalcular con:
+//   node -e "console.log('sha256-'+require('crypto').createHash('sha256').update(\"<contenido>\").digest('base64'))"
+// IMPORTANTE: helmet va ANTES que express.static para que los HTML estaticos tambien reciban CSP.
+const THEME_SCRIPT_HASH = "'sha256-Ssp7JpZZ2d4wEELFIcdAEYZvuODuv2Pst+q1f5AUtBw='";
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -24,11 +26,17 @@ app.use(helmet({
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com'],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com'],
+      scriptSrc: ["'self'", THEME_SCRIPT_HASH, 'https://cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
       fontSrc: ["'self'", 'https://cdnjs.cloudflare.com', 'data:'],
     },
   },
+}));
+
+// Static assets (Vite builds → public/)
+app.use(express.static('public', {
+  maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0,
+  immutable: process.env.NODE_ENV === 'production',
 }));
 
 app.use(express.json({ limit: '5mb' }));
