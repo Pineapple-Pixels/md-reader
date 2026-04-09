@@ -9,6 +9,19 @@ export function resolveDoc(file, baseDir = PUB_DIR) {
   return resolved;
 }
 
+// Validates that `file` is a writable doc path: must be a .md file and must
+// not traverse into hidden segments (.meta.json, .versions/, .comments/, etc).
+// Read-only resolveDoc() is intentionally more permissive so existing metadata
+// reads keep working.
+export function isWritableDocPath(file) {
+  if (typeof file !== 'string' || !file) return false;
+  if (file.includes('\0')) return false;
+  if (!file.endsWith('.md')) return false;
+  const segments = file.split(/[/\\]/);
+  if (segments.some((s) => !s || s === '..' || s.startsWith('.'))) return false;
+  return true;
+}
+
 export async function ensureDir(dir) {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }

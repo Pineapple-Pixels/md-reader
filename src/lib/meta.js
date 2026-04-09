@@ -39,7 +39,12 @@ function enqueueWrite(mutator) {
     return result;
   };
   const next = writeQueue.then(run, run);
-  writeQueue = next.catch(() => {});
+  // Keep the queue alive even if a write fails, but surface the failure.
+  // Callers still receive the rejection via `next` — this catch only prevents
+  // a single failure from blocking subsequent writes.
+  writeQueue = next.catch((err) => {
+    console.error('[meta] write failed:', err);
+  });
   return next;
 }
 
