@@ -72,22 +72,30 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
     const text = commentTexts[line];
     if (!text) return;
     const author = commentAuthors[line] || 'Anonimo';
-    await apiFetch('/comments', {
-      method: 'POST',
-      body: JSON.stringify({ file, line, text, author }),
-    });
-    setCommentTexts((p) => ({ ...p, [line]: '' }));
-    queryClient.invalidateQueries({ queryKey: ['source', file] });
-    toast('Comentario agregado', 'success');
+    try {
+      await apiFetch('/comments', {
+        method: 'POST',
+        body: JSON.stringify({ file, line, text, author }),
+      });
+      setCommentTexts((p) => ({ ...p, [line]: '' }));
+      queryClient.invalidateQueries({ queryKey: ['source', file] });
+      toast('Comentario agregado', 'success');
+    } catch {
+      toast('Error al agregar comentario', 'error');
+    }
   }
 
   async function deleteComment(id: string) {
-    await apiFetch('/comments/delete', {
-      method: 'POST',
-      body: JSON.stringify({ file, id }),
-    });
-    queryClient.invalidateQueries({ queryKey: ['source', file] });
-    toast('Comentario eliminado', 'success');
+    try {
+      await apiFetch('/comments/delete', {
+        method: 'POST',
+        body: JSON.stringify({ file, id }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['source', file] });
+      toast('Comentario eliminado', 'success');
+    } catch {
+      toast('Error al eliminar comentario', 'error');
+    }
   }
 
   function escapeHtml(s: string) {
@@ -115,12 +123,33 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
           return (
             <div key={i}>
               <div className={`source-line${hasComment ? ' has-comment' : ''}`}>
-                <span className="line-num" onClick={() => toggleForm(lineNum)}>{lineNum}</span>
+                {isPublic ? (
+                  <span className="line-num">{lineNum}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="line-num"
+                    onClick={() => toggleForm(lineNum)}
+                    aria-label={`Comentar linea ${lineNum}`}
+                    aria-expanded={openForms.has(lineNum)}
+                  >
+                    {lineNum}
+                  </button>
+                )}
                 <span className="line-content" dangerouslySetInnerHTML={{ __html: escapeHtml(line) }} />
               </div>
               {hasComment && hasComment.map((c) => (
                 <div key={c.id} className="comment-box">
-                  {!isPublic && <button className="delete-comment" onClick={() => deleteComment(c.id)}>&times;</button>}
+                  {!isPublic && (
+                    <button
+                      type="button"
+                      className="delete-comment"
+                      onClick={() => deleteComment(c.id)}
+                      aria-label="Eliminar comentario"
+                    >
+                      &times;
+                    </button>
+                  )}
                   <span className="author">{c.author}</span>{' '}
                   <span className="date">{new Date(c.date).toLocaleDateString('es-AR')}</span>
                   <div className="text">{c.text}</div>

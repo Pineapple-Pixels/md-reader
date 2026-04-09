@@ -54,11 +54,15 @@ export function PrivateIndexPage() {
 
   async function uploadFiles(mdFiles: { file: File; path: string }[]) {
     if (mdFiles.length === 0) { toast('No se encontraron archivos .md', 'error'); return; }
+    // Read all file contents upfront to avoid File objects being invalidated during sequential uploads
+    setUploadProgress(`Leyendo ${mdFiles.length} archivos...`);
+    const readFiles = await Promise.all(
+      mdFiles.map(async ({ file, path }) => ({ path, content: await file.text() }))
+    );
     let done = 0;
-    for (const { file, path } of mdFiles) {
+    for (const { path, content } of readFiles) {
       done++;
-      setUploadProgress(`Subiendo ${done}/${mdFiles.length}: ${path}`);
-      const content = await file.text();
+      setUploadProgress(`Subiendo ${done}/${readFiles.length}: ${path}`);
       await apiFetch('/push', {
         method: 'POST',
         body: JSON.stringify({ file: path, content }),
@@ -180,7 +184,14 @@ export function PrivateIndexPage() {
         <h1 style={{ fontSize: '1.5em' }}>Mis documentos</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Link to="/pub" target="_blank" style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>Ver sitio publico</Link>
-          <button className="theme-toggle" onClick={toggle}>{isDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}</button>
+          <button
+            className="theme-toggle"
+            onClick={toggle}
+            aria-label={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+            title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          >
+            <span aria-hidden="true">{isDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}</span>
+          </button>
           <button onClick={handleLogout} style={{ fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Cerrar sesion</button>
         </div>
       </div>

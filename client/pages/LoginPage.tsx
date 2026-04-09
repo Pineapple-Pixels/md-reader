@@ -47,10 +47,10 @@ export function LoginPage() {
           </div>
         )}
         <form onSubmit={handleSubmit}>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Usuario</label>
-          <input type="text" name="user" required style={{ width: '100%', padding: 10, border: '1px solid var(--border-input)', borderRadius: 6, fontSize: 14, marginBottom: 14, background: 'var(--bg-input)', color: 'var(--text)' }} />
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Contrasena</label>
-          <input type="password" name="pass" required style={{ width: '100%', padding: 10, border: '1px solid var(--border-input)', borderRadius: 6, fontSize: 14, marginBottom: 20, background: 'var(--bg-input)', color: 'var(--text)' }} />
+          <label htmlFor="login-user" style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Usuario</label>
+          <input id="login-user" type="text" name="user" autoComplete="username" required style={{ width: '100%', padding: 10, border: '1px solid var(--border-input)', borderRadius: 6, fontSize: 14, marginBottom: 14, background: 'var(--bg-input)', color: 'var(--text)' }} />
+          <label htmlFor="login-pass" style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Contrasena</label>
+          <input id="login-pass" type="password" name="pass" autoComplete="current-password" required style={{ width: '100%', padding: 10, border: '1px solid var(--border-input)', borderRadius: 6, fontSize: 14, marginBottom: 20, background: 'var(--bg-input)', color: 'var(--text)' }} />
           <button type="submit" disabled={loading} style={{ width: '100%', padding: 10, background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontWeight: 500 }}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>

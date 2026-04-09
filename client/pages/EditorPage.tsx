@@ -20,42 +20,59 @@ export function EditorPage() {
   const [content, setContent] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [statusColor, setStatusColor] = useState('var(--text-muted)');
-  const [saving, setSaving] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Live refs so doSave doesn't go stale between renders. Using state here caused
+  // manual Ctrl+S to be dropped while an auto-save was in flight.
+  const savingRef = useRef(false);
+  const pendingSaveRef = useRef<{ redirect: boolean } | null>(null);
+  const contentRef = useRef('');
 
   // Initialize content when data loads
   useEffect(() => {
     if (data?.content !== undefined) setContent(data.content);
   }, [data?.content]);
 
-  const doSave = useCallback(async (redirect: boolean) => {
-    if (saving) return;
-    setSaving(true);
+  // Keep a live ref of content for doSave, which is intentionally not recreated
+  // on every keystroke.
+  useEffect(() => { contentRef.current = content; }, [content]);
+
+  const doSave = useCallback(async (redirect: boolean): Promise<void> => {
+    if (savingRef.current) {
+      // A save is already in flight — queue this request so we don't lose it.
+      // If anyone wants to redirect, honor that on the follow-up.
+      pendingSaveRef.current = { redirect: pendingSaveRef.current?.redirect || redirect };
+      return;
+    }
+    savingRef.current = true;
     setSaveStatus('Guardando...');
     setStatusColor('var(--text-muted)');
     try {
       const res = await apiFetch<{ ok: boolean }>('/save', {
         method: 'POST',
-        body: JSON.stringify({ file, content }),
+        body: JSON.stringify({ file, content: contentRef.current }),
       });
       if (res.ok) {
         if (redirect) {
           toast('Documento guardado', 'success');
           navigate(`/doc/${file}`);
-        } else {
-          setSaveStatus('Guardado');
-          setStatusColor('#16a34a');
-          toast('Guardado automatico', 'success');
+          savingRef.current = false;
+          return;
         }
+        setSaveStatus('Guardado');
+        setStatusColor('#16a34a');
+        toast('Guardado automatico', 'success');
       }
     } catch {
       setSaveStatus('Error al guardar');
       setStatusColor('var(--danger)');
       toast('Error al guardar', 'error');
     }
-    setSaving(false);
-  }, [saving, file, content, navigate, toast]);
+    savingRef.current = false;
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (pending) doSave(pending.redirect);
+  }, [file, navigate, toast]);
 
   function handleChange(value: string) {
     setContent(value);

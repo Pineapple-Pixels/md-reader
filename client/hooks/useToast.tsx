@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -19,6 +19,17 @@ let nextId = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Track pending timers so we can clear them on unmount and avoid "setState on
+  // unmounted component" warnings / leaks.
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   const addToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = nextId++;
@@ -27,13 +38,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     requestAnimationFrame(() => {
       setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, visible: true } : t)));
     });
-    // Auto-dismiss
-    setTimeout(() => {
+    // Auto-dismiss (tracked so unmount cancels both timers)
+    const hideTimer = setTimeout(() => {
+      timersRef.current.delete(hideTimer);
       setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, visible: false } : t)));
-      setTimeout(() => {
+      const removeTimer = setTimeout(() => {
+        timersRef.current.delete(removeTimer);
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 300);
+      timersRef.current.add(removeTimer);
     }, 3000);
+    timersRef.current.add(hideTimer);
   }, []);
 
   return (

@@ -76,8 +76,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .source-line { display: flex; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.7; }
 .source-line:hover { background: var(--bg-code); }
 .source-line.has-comment { background: var(--warning-bg); }
-.line-num { min-width: 50px; padding: 0 12px; text-align: right; color: var(--text-muted); user-select: none; cursor: pointer; border-right: 1px solid var(--border); }
+.line-num { min-width: 50px; padding: 0 12px; text-align: right; color: var(--text-muted); user-select: none; cursor: pointer; border-right: 1px solid var(--border); font: inherit; background: none; appearance: none; display: inline-block; }
+button.line-num { cursor: pointer; }
 .line-num:hover { color: var(--accent); background: var(--accent-bg); }
+button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .line-content { padding: 0 16px; white-space: pre-wrap; word-break: break-all; flex: 1; }
 
 /* === Comments === */
