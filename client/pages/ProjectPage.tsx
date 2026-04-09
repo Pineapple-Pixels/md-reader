@@ -45,19 +45,6 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
   const [loadingPage, setLoadingPage] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  // Initialize from query data
-  useEffect(() => {
-    if (data) {
-      if (!page) {
-        setCurrentPage(data.currentFile);
-      } else {
-        setCurrentPage(page);
-      }
-      setDocHtml(data.html);
-      setTimeout(() => hljs?.highlightAll(), 0);
-    }
-  }, [data, page]);
-
   const loadPage = useCallback(async (pagePath: string) => {
     setLoadingPage(true);
     try {
@@ -72,6 +59,25 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
     }
     setLoadingPage(false);
   }, [folder, isPublic, setSearchParams]);
+
+  // Initialize when data first arrives. IMPORTANT: do not depend on `page` —
+  // loadPage already calls setSearchParams({ page }), and if we re-ran this
+  // effect on page changes it would clobber docHtml with data.html (the
+  // mainPage) every time the user clicked a different file.
+  useEffect(() => {
+    if (!data) return;
+    const target = page || data.currentFile;
+    if (target === data.currentFile) {
+      setCurrentPage(data.currentFile);
+      setDocHtml(data.html);
+      setTimeout(() => hljs?.highlightAll(), 0);
+    } else {
+      loadPage(target);
+    }
+    // Intentionally excluding `page` and `loadPage` — this should only fire
+    // once per fresh `data` load (initial hydration / direct link into a page).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   function toggleFolder(path: string) {
     setCollapsed((prev) => {

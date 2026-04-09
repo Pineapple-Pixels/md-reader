@@ -8,7 +8,9 @@ export default defineConfig({
   root: resolve(__dirname),
   build: {
     outDir: resolve(__dirname, '../public'),
-    emptyDirBeforeWrite: false,
+    // outDir esta fuera del project root; sin esto, Vite deja los bundles viejos
+    // conviviendo con los nuevos y el server puede servir el hash stale.
+    emptyOutDir: true,
     rollupOptions: {
       input: resolve(__dirname, 'index.html'),
       output: {
