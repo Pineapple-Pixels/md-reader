@@ -19,6 +19,7 @@ RUN cd client && npm run build
 COPY tsconfig.server.json ./
 COPY src/ ./src/
 COPY types/ ./types/
+COPY cli/ ./cli/
 RUN npm run build:server
 
 # --- Production image ---
@@ -31,6 +32,7 @@ RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist/ ./dist/
 COPY cli/ ./cli/
+COPY migrations/ ./migrations/
 COPY --from=builder /app/public/ ./public/
 
 EXPOSE 3500

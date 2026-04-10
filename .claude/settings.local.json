@@ -86,7 +86,12 @@
       "Bash(unzip -l /tmp/proj.zip)",
       "Bash(xxd /tmp/proj.zip)",
       "Bash(xxd /tmp/proj2.zip)",
-      "Bash(unzip -l /tmp/proj2.zip)"
+      "Bash(unzip -l /tmp/proj2.zip)",
+      "Bash(npm i:*)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

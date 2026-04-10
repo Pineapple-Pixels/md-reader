@@ -6,6 +6,7 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod';
 import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
+import { seedAdminIfEmpty } from './lib/seed.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
 
@@ -67,9 +68,8 @@ app.get('/api/auth/me', (req, res) => {
     return;
   }
   const decoded = verifyToken(token);
-  if (decoded && typeof decoded === 'object' && 'user' in decoded) {
-    const user = (decoded as { user: unknown }).user;
-    res.json({ authenticated: true, user: typeof user === 'string' ? user : null });
+  if (decoded) {
+    res.json({ authenticated: true, user: decoded.username, role: decoded.role });
     return;
   }
   res.json({ authenticated: false });
@@ -80,25 +80,28 @@ const LoginBody = z.object({
   pass: z.string().min(1),
 });
 
-app.post('/api/auth/login', loginLimiter, (req, res) => {
+app.post('/api/auth/login', loginLimiter, (req, res, next) => {
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'user y pass son requeridos' });
     return;
   }
   const { user, pass } = parsed.data;
-  const token = login(user, pass);
-  if (!token) {
-    res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
-    return;
-  }
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env['NODE_ENV'] === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: 'strict',
-  });
-  res.json({ ok: true });
+  login(user, pass)
+    .then((token) => {
+      if (!token) {
+        res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
+        return;
+      }
+      res.cookie(COOKIE_NAME, token, {
+        httpOnly: true,
+        secure: process.env['NODE_ENV'] === 'production',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        sameSite: 'strict',
+      });
+      res.json({ ok: true });
+    })
+    .catch(next);
 });
 
 app.post('/api/auth/logout', (_req, res) => {
@@ -136,4 +139,13 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const PORT = Number(process.env['PORT']) || 3500;
-app.listen(PORT, () => console.log(`Docs server en http://localhost:${PORT}/`));
+
+// Seed del admin desde env si la DB esta vacia, despues arranca el server.
+seedAdminIfEmpty()
+  .catch((err) => {
+    console.error('[seed] error durante el seed inicial:', err);
+    // No abortamos — el server puede arrancar sin admin y los users se crean via CLI.
+  })
+  .finally(() => {
+    app.listen(PORT, () => console.log(`Docs server en http://localhost:${PORT}/`));
+  });

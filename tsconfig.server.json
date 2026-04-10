@@ -17,6 +17,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*.ts", "shared/**/*.ts", "types/**/*.d.ts"],
+  "include": ["src/**/*.ts", "shared/**/*.ts", "types/**/*.d.ts", "cli/**/*.ts"],
   "exclude": ["node_modules", "dist", "client", "public"]
 }

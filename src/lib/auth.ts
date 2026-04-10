@@ -1,10 +1,19 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { ADMIN_USER, ADMIN_PASS, JWT_SECRET, PUB_TOKEN } from './config.js';
+import { JWT_SECRET, PUB_TOKEN } from './config.js';
+import { findByUsername, verifyPassword } from './users.js';
+import type { UserRole } from './users.js';
 
 const TOKEN_EXPIRY = '7d';
 const COOKIE_NAME = 'docs_token';
+
+// Shape del payload JWT. `iat`/`exp` los agrega jsonwebtoken.
+export type AuthPayload = {
+  userId: number;
+  username: string;
+  role: UserRole;
+};
 
 function safeEqual(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -21,16 +30,32 @@ function readCookie(req: Request, name: string): string | undefined {
   return cookies?.[name];
 }
 
-export function login(user: string, pass: string): string | null {
-  if (ADMIN_PASS && user === ADMIN_USER && pass === ADMIN_PASS) {
-    return jwt.sign({ user }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+export async function login(username: string, password: string): Promise<string | null> {
+  const user = await findByUsername(username);
+  if (!user) {
+    // Dummy compare para equiparar tiempos entre "user no existe" y "password mal".
+    // Evita user enumeration via timing.
+    await verifyPassword(password, '$2a$12$CwTycUXWue0Thq9StjUM0uJ8.fCSFCnU6H1kJq7wX3dMwCqYl2zRa');
+    return null;
   }
-  return null;
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) return null;
+  const payload: AuthPayload = {
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
 }
 
-export function verifyToken(token: string): jwt.JwtPayload | string | null {
+export function verifyToken(token: string): AuthPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (typeof decoded !== 'object' || decoded === null) return null;
+    const { userId, username, role } = decoded as Record<string, unknown>;
+    if (typeof userId !== 'number' || typeof username !== 'string') return null;
+    if (role !== 'admin' && role !== 'member') return null;
+    return { userId, username, role };
   } catch {
     return null;
   }

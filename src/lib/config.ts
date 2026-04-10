@@ -7,6 +7,13 @@ export const PUB_TOKEN = process.env['PUB_TOKEN'] || '';
 export const ADMIN_USER = process.env['ADMIN_USER'] || 'admin';
 export const ADMIN_PASS = process.env['ADMIN_PASS'] || '';
 export const JWT_SECRET = process.env['JWT_SECRET'] || 'change-me-in-production';
+export const DATABASE_URL = process.env['DATABASE_URL'] || '';
+
+if (!DATABASE_URL) {
+  const msg = 'DATABASE_URL no esta configurado. Requerido para login multi-usuario.';
+  if (process.env['NODE_ENV'] === 'production') throw new Error(msg);
+  console.warn(`[config] ${msg}`);
+}
 
 // Fail-fast en produccion si no hay un JWT_SECRET seguro configurado
 if (process.env['NODE_ENV'] === 'production') {

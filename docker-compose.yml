@@ -4,10 +4,34 @@ services:
     restart: unless-stopped
     expose:
       - "3500"
+    environment:
+      - DATABASE_URL=postgres://mdreader:mdreader@postgres:5432/mdreader
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - pub-docs:/app/pub-docs
       - pub-local:/app/pub-local
 
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=mdreader
+      - POSTGRES_PASSWORD=mdreader
+      - POSTGRES_DB=mdreader
+    # Puerto expuesto solo en dev — en prod, Coolify/compose override puede quitarlo.
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mdreader -d mdreader"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pub-docs:
   pub-local:
+  pg-data:
