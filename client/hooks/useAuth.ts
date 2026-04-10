@@ -1,19 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@shared/api';
 
 interface AuthState {
   isAuthenticated: boolean;
   user: string | null;
   isLoading: boolean;
+  error: Error | null;
+}
+
+interface AuthResponse {
+  authenticated: boolean;
+  user?: string;
 }
 
 export function useAuth(): AuthState {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery<AuthResponse, Error>({
     queryKey: ['auth'],
-    queryFn: async () => {
-      const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
-      if (!res.ok) return { authenticated: false, user: null };
-      return res.json();
-    },
+    queryFn: () => apiFetch<AuthResponse>('/auth/me'),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -22,5 +25,6 @@ export function useAuth(): AuthState {
     isAuthenticated: data?.authenticated ?? false,
     user: data?.user ?? null,
     isLoading,
+    error: error ?? null,
   };
 }

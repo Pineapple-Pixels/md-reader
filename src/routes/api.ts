@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { PUB_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles, ensureDir, saveVersion, isWritableDocPath } from '../lib/storage.js';
-import { getComments, addComment, deleteComment, type Comment } from '../lib/comments.js';
+import { getComments, addComment, deleteComment, deleteAllComments, type Comment } from '../lib/comments.js';
 import { requireTokenOrAuth } from '../lib/auth.js';
 import { toggleVisibility, removeMeta, getMeta } from '../lib/meta.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
@@ -211,6 +211,7 @@ router.delete('/delete', ah(async (req, res) => {
         if (!isEnoent(err)) throw err;
       }
       await removeMeta(f.name);
+      await deleteAllComments(f.name);
     }));
     await rm(filePath, { recursive: true, force: true });
   } else {
@@ -222,6 +223,7 @@ router.delete('/delete', ah(async (req, res) => {
     }
     await unlink(filePath).catch((err: unknown) => { if (!isEnoent(err)) throw err; });
     await removeMeta(file);
+    await deleteAllComments(file);
   }
   invalidateSearchIndex();
   res.json({ ok: true });
@@ -289,6 +291,10 @@ router.post('/comments', ah(async (req, res) => {
     return res.status(400).json({ error: first?.message ?? 'Body invalido' });
   }
   const { file, text, line, author } = parsed.data;
+  const filePath = resolveDoc(file);
+  if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  const stats = await statOrNull(filePath);
+  if (!stats || !stats.isFile()) return res.status(404).json({ error: 'Archivo no encontrado' });
   const comment: Comment = {
     id: randomUUID(),
     text,

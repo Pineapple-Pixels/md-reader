@@ -1,12 +1,8 @@
 import { useTheme } from '../hooks/useTheme';
 
-interface ToolbarAction {
-  label: string;
-  href?: string;
-  onClick?: () => void;
-  primary?: boolean;
-  className?: string;
-}
+export type ToolbarAction =
+  | { label: string; href: string; primary?: boolean; className?: string }
+  | { label: string; onClick: () => void; primary?: boolean; className?: string };
 
 interface ToolbarProps {
   actions: ToolbarAction[];
@@ -20,7 +16,7 @@ export function Toolbar({ actions, children }: ToolbarProps) {
     <div className="toolbar">
       {actions.map((action, i) => {
         const cls = `${action.primary ? 'primary' : ''} ${action.className || ''}`.trim();
-        if (action.href) {
+        if ('href' in action) {
           return <a key={i} href={action.href} className={cls || undefined}>{action.label}</a>;
         }
         return <button key={i} onClick={action.onClick} className={cls || undefined}>{action.label}</button>;

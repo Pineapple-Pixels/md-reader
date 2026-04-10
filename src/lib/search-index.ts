@@ -51,7 +51,8 @@ export async function getSearchIndex(): Promise<SearchIndexEntry[]> {
   const files = await getFiles(PUB_DIR);
   const meta = await getMeta();
 
-  cache = await Promise.all(
+  // Promise.allSettled: un archivo corrupto/eliminado no tira todo el indice abajo.
+  const settled = await Promise.allSettled(
     files.map(async (f): Promise<SearchIndexEntry> => {
       const filePath = join(PUB_DIR, f.name);
       const content = await readFile(filePath, 'utf-8');
@@ -66,5 +67,15 @@ export async function getSearchIndex(): Promise<SearchIndexEntry[]> {
     })
   );
 
+  const entries: SearchIndexEntry[] = [];
+  for (const result of settled) {
+    if (result.status === 'fulfilled') {
+      entries.push(result.value);
+    } else {
+      console.warn('[search-index] skip:', result.reason);
+    }
+  }
+
+  cache = entries;
   return cache;
 }

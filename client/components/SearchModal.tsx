@@ -65,8 +65,12 @@ export function SearchModal() {
     const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const re = new RegExp(`(${pattern})`, 'gi');
     const parts = text.split(re);
+    // split() con capturing group devuelve [texto, match, texto, match, ...]
+    // Los indices impares son las capturas.
     return parts.map((part, i) =>
-      re.test(part) ? <mark key={i} style={{ background: 'var(--warning-bg)', color: 'var(--text)', padding: '0 1px', borderRadius: 2 }}>{part}</mark> : part
+      i % 2 === 1
+        ? <mark key={i} style={{ background: 'var(--warning-bg)', color: 'var(--text)', padding: '0 1px', borderRadius: 2 }}>{part}</mark>
+        : part
     );
   }
 

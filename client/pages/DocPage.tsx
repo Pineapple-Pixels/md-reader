@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
 import { useToast } from '../hooks/useToast';
-import { Toolbar } from '../components/Toolbar';
+import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 
 declare const hljs: { highlightAll: () => void };
 
@@ -102,16 +102,16 @@ export function DocPage({ isPublic = false }: DocPageProps) {
   const sourceUrl = isPublic ? `/pub/source/${file}` : `/source/${file}`;
   const commentLabel = `Codigo fuente${data?.commentCount ? ` (${data.commentCount})` : ''}`;
 
-  const actions = [
+  const actions: ToolbarAction[] = [
     { label: 'Volver', href: homeUrl },
     { label: commentLabel, href: sourceUrl },
   ];
 
   if (!isPublic) {
-    actions.push({ label: 'Editar', href: `/edit/${file}`, primary: true } as any);
-    actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' } as any);
-    actions.push({ label: data?.isFilePublic ? 'Publico' : 'Privado', onClick: handleToggleVis, className: `action-btn ${data?.isFilePublic ? 'publish-btn' : ''}` } as any);
-    actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' } as any);
+    actions.push({ label: 'Editar', href: `/edit/${file}`, primary: true });
+    actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' });
+    actions.push({ label: data?.isFilePublic ? 'Publico' : 'Privado', onClick: handleToggleVis, className: `action-btn ${data?.isFilePublic ? 'publish-btn' : ''}` });
+    actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
   }
 
   return (

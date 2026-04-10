@@ -20,7 +20,7 @@ export function EditorPage() {
   const [content, setContent] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [statusColor, setStatusColor] = useState('var(--text-muted)');
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Live refs so doSave doesn't go stale between renders. Using state here caused
   // manual Ctrl+S to be dropped while an auto-save was in flight.
@@ -36,6 +36,18 @@ export function EditorPage() {
   // Keep a live ref of content for doSave, which is intentionally not recreated
   // on every keystroke.
   useEffect(() => { contentRef.current = content; }, [content]);
+
+  // Reset auto-save state cuando cambia el archivo — evita que un timer pendiente
+  // sobreescriba el nuevo archivo con el contenido del anterior.
+  useEffect(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = null;
+    pendingSaveRef.current = null;
+    savingRef.current = false;
+    contentRef.current = '';
+    setContent('');
+    setSaveStatus('');
+  }, [file]);
 
   const doSave = useCallback(async (redirect: boolean): Promise<void> => {
     if (savingRef.current) {

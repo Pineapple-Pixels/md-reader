@@ -101,3 +101,31 @@ export async function deleteComment(file: string, id: string): Promise<Comment[]
     return comments.filter((c) => c.id !== id);
   });
 }
+
+export async function deleteAllComments(file: string): Promise<void> {
+  let commentsFile: string;
+  try {
+    commentsFile = resolveCommentsFile(file);
+  } catch {
+    // Ruta invalida → nada que borrar.
+    return;
+  }
+  // Serializamos con los writes en curso usando la misma cola per-file.
+  const prev = writeQueues.get(commentsFile) ?? Promise.resolve();
+  const run = async (): Promise<void> => {
+    try {
+      await unlink(commentsFile);
+    } catch (err) {
+      // ENOENT: no habia comentarios, nada que borrar.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  };
+  const next = prev.then(run, run);
+  writeQueues.set(
+    commentsFile,
+    next.catch((err) => {
+      console.error('[comments] delete-all failed:', err);
+    })
+  );
+  return next;
+}

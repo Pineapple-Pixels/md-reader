@@ -1,15 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { apiFetch } from '@shared/api';
 import { FileList } from '../components/FileList';
 
 export function PublicIndexPage() {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['public-docs'],
-    queryFn: async () => {
-      const res = await fetch('/api/public/docs');
-      if (!res.ok) throw new Error('Error al cargar docs');
-      return res.json();
-    },
+    queryFn: () => apiFetch<Array<{ name: string; modified: string }>>('/public/docs'),
   });
 
   return (

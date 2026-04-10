@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '@shared/api';
 
 export function LoginPage() {
   const [error, setError] = useState('');
@@ -18,21 +19,20 @@ export function LoginPage() {
     const pass = (form.elements.namedItem('pass') as HTMLInputElement).value;
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const data = await apiFetch<{ ok?: boolean; error?: string }>('/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
         body: JSON.stringify({ user, pass }),
       });
-      const data = await res.json();
       if (data.ok) {
         queryClient.setQueryData(['auth'], { authenticated: true, user });
         navigate('/', { replace: true });
       } else {
         setError(data.error || 'Usuario o contrasena incorrectos');
       }
-    } catch {
-      setError('Error de conexion');
+    } catch (err) {
+      // apiFetch tira en 401 (credenciales invalidas) y en 5xx (servidor caido)
+      const msg = err instanceof Error ? err.message : 'Error de conexion';
+      setError(msg.includes('401') ? 'Usuario o contrasena incorrectos' : 'Error de conexion');
     }
     setLoading(false);
   }
