@@ -1,9 +1,10 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import { z } from 'zod';
 import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
@@ -35,8 +36,8 @@ app.use(helmet({
 
 // Static assets (Vite builds → public/)
 app.use(express.static('public', {
-  maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0,
-  immutable: process.env.NODE_ENV === 'production',
+  maxAge: process.env['NODE_ENV'] === 'production' ? '1y' : 0,
+  immutable: process.env['NODE_ENV'] === 'production',
 }));
 
 app.use(express.json({ limit: '5mb' }));
@@ -53,26 +54,53 @@ const loginLimiter = rateLimit({
 });
 
 // Health check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Auth API endpoints
 app.get('/api/auth/me', (req, res) => {
-  const token = req.cookies?.[COOKIE_NAME];
-  if (!token) return res.json({ authenticated: false });
+  const cookies = req.cookies as Record<string, string | undefined> | undefined;
+  const token = cookies?.[COOKIE_NAME];
+  if (!token) {
+    res.json({ authenticated: false });
+    return;
+  }
   const decoded = verifyToken(token);
-  if (decoded) return res.json({ authenticated: true, user: decoded.user });
+  if (decoded && typeof decoded === 'object' && 'user' in decoded) {
+    const user = (decoded as { user: unknown }).user;
+    res.json({ authenticated: true, user: typeof user === 'string' ? user : null });
+    return;
+  }
   res.json({ authenticated: false });
 });
 
+const LoginBody = z.object({
+  user: z.string().min(1),
+  pass: z.string().min(1),
+});
+
 app.post('/api/auth/login', loginLimiter, (req, res) => {
-  const { user, pass } = req.body;
+  const parsed = LoginBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'user y pass son requeridos' });
+    return;
+  }
+  const { user, pass } = parsed.data;
   const token = login(user, pass);
-  if (!token) return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
-  res.cookie(COOKIE_NAME, token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'strict' });
+  if (!token) {
+    res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
+    return;
+  }
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: 'strict',
+  });
   res.json({ ok: true });
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', (_req, res) => {
   res.clearCookie(COOKIE_NAME);
   res.json({ ok: true });
 });
@@ -85,7 +113,7 @@ app.use('/api', apiRouter);
 
 // SPA fallback: serve index.html for all other routes
 const spaHtml = resolve('public', 'index.html');
-app.get('/{*path}', (req, res) => {
+app.get('/{*path}', (_req, res) => {
   if (existsSync(spaHtml)) {
     res.sendFile(spaHtml);
   } else {
@@ -93,10 +121,14 @@ app.get('/{*path}', (req, res) => {
   }
 });
 
-app.use((err, req, res, next) => {
-  console.error('ERROR:', err.message, err.stack);
-  res.status(500).json({ error: err.message });
+// Error handler — Express distingue error handlers por la aridad (4 args),
+// asi que `_next` debe existir aunque no lo usemos.
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error('ERROR:', message, stack);
+  res.status(500).json({ error: message });
 });
 
-const PORT = process.env.PORT || 3500;
+const PORT = Number(process.env['PORT']) || 3500;
 app.listen(PORT, () => console.log(`Docs server en http://localhost:${PORT}/`));

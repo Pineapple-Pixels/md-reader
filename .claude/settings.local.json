@@ -72,7 +72,13 @@
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(PORT=3599 timeout 5 npx tsx --env-file=.env src/index.js)",
+      "Bash(PORT=3598 timeout 5 npx tsx --env-file=.env src/index.js)",
+      "Bash(timeout 4 npx tsx watch --env-file=.env src/index.ts)",
+      "Bash(PORT=3595 timeout 4 npx tsx --env-file=.env src/index.ts)",
+      "Bash(PORT=3597 timeout 4 node --env-file=.env dist/src/index.js)"
     ]
   }
 }

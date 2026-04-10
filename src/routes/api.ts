@@ -1,92 +1,129 @@
 import { Router } from 'express';
-import { readFile, writeFile, unlink, rm, stat } from 'fs/promises';
+import { readFile, writeFile, unlink, rm } from 'fs/promises';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { PUB_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles, ensureDir, saveVersion, isWritableDocPath } from '../lib/storage.js';
-import { getComments, addComment, deleteComment } from '../lib/comments.js';
+import { getComments, addComment, deleteComment, type Comment } from '../lib/comments.js';
 import { requireTokenOrAuth } from '../lib/auth.js';
 import { toggleVisibility, removeMeta, getMeta } from '../lib/meta.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
+import { ah, statOrNull, isEnoent, queryString } from '../lib/route-helpers.js';
 
 const router = Router();
-
-// Forward async route errors to the Express error handler so rejected
-// promises don't crash the process or hang the request.
-const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-
-// Treat ENOENT as "not found", rethrow anything else.
-async function statOrNull(p) {
-  try { return await stat(p); }
-  catch (err) { if (err.code === 'ENOENT') return null; throw err; }
-}
 
 // Limits on user-provided comment fields
 const COMMENT_TEXT_MAX = 2000;
 const COMMENT_AUTHOR_MAX = 100;
 
+// ----- Body schemas (zod) -----
+const FileContentBody = z.object({
+  file: z.string().min(1),
+  content: z.string(),
+});
+
+const FileBody = z.object({
+  file: z.string().min(1),
+});
+
+const CommentBody = z.object({
+  file: z.string().min(1),
+  text: z.string().trim().min(1).max(COMMENT_TEXT_MAX),
+  // `null`, `undefined` o `""` → sin linea; entero positivo si viene
+  line: z
+    .union([z.number().int().positive(), z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null;
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isInteger(n) && n >= 1 ? n : NaN;
+    })
+    .refine((v) => v === null || Number.isInteger(v), {
+      message: 'line debe ser un entero positivo',
+    }),
+  author: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null) return 'Anonimo';
+      const trimmed = v.trim().slice(0, COMMENT_AUTHOR_MAX);
+      return trimmed || 'Anonimo';
+    }),
+});
+
+const CommentDeleteBody = z.object({
+  file: z.string().min(1),
+  id: z.string().min(1),
+});
+
 // All API routes require auth (cookie or token)
 router.use(requireTokenOrAuth);
 
 // Search index
-router.get('/search-index', ah(async (req, res) => {
+router.get('/search-index', ah(async (_req, res) => {
   const index = await getSearchIndex();
   res.json(index);
 }));
 
 // List all docs
-router.get('/docs', ah(async (req, res) => {
+router.get('/docs', ah(async (_req, res) => {
   const files = await getFiles(PUB_DIR);
   res.json(files);
 }));
 
 // Get metadata (visibility info)
-router.get('/meta', ah(async (req, res) => {
+router.get('/meta', ah(async (_req, res) => {
   const meta = await getMeta();
   res.json(meta);
 }));
 
 // Render a single doc to HTML
 router.get('/render', ah(async (req, res) => {
-  const { file } = req.query;
+  const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  let content;
+  let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (err.code === 'ENOENT' || err.code === 'EISDIR') return res.status(404).json({ error: 'Archivo no encontrado' });
+    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
     throw err;
   }
   const html = md.render(content);
   const comments = await getComments(file);
   const meta = await getMeta();
-  res.json({ html, commentCount: comments.length, isFilePublic: !!meta[file]?.public });
+  res.json({ html, commentCount: comments.length, isFilePublic: meta[file]?.public === true });
 }));
 
 // Download doc
 router.get('/download', ah(async (req, res) => {
-  const { file } = req.query;
+  const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  let content;
+  let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (err.code === 'ENOENT' || err.code === 'EISDIR') return res.status(404).json({ error: 'Archivo no encontrado' });
+    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
     throw err;
   }
   const rawName = file.split('/').pop();
-  const safeName = (rawName || '').replace(/[^a-zA-Z0-9._-]/g, '') || 'document.md';
+  const safeName = (rawName ?? '').replace(/[^a-zA-Z0-9._-]/g, '') || 'document.md';
   res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
   res.type('text/markdown').send(content);
 }));
 
 // Upload/push doc
 router.post('/push', ah(async (req, res) => {
-  const { file, content } = req.body;
-  if (!file || content === undefined) return res.status(400).json({ error: 'file y content son requeridos' });
+  const parsed = FileContentBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
+  const { file, content } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
@@ -96,7 +133,7 @@ router.post('/push', ah(async (req, res) => {
     const old = await readFile(filePath, 'utf-8');
     await saveVersion(filePath, old);
   } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
+    if (!isEnoent(err)) throw err;
   }
   await writeFile(filePath, content);
   invalidateSearchIndex();
@@ -105,8 +142,9 @@ router.post('/push', ah(async (req, res) => {
 
 // Save doc (with version backup)
 router.post('/save', ah(async (req, res) => {
-  const { file, content } = req.body;
-  if (!file || content === undefined) return res.status(400).json({ error: 'file y content son requeridos' });
+  const parsed = FileContentBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
+  const { file, content } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
@@ -114,7 +152,7 @@ router.post('/save', ah(async (req, res) => {
     const old = await readFile(filePath, 'utf-8');
     await saveVersion(filePath, old);
   } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
+    if (!isEnoent(err)) throw err;
   }
   await writeFile(filePath, content);
   invalidateSearchIndex();
@@ -123,14 +161,16 @@ router.post('/save', ah(async (req, res) => {
 
 // Pull doc (raw content)
 router.get('/pull', ah(async (req, res) => {
-  const { file } = req.query;
+  const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  let content;
+  let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (err.code === 'ENOENT' || err.code === 'EISDIR') return res.status(404).json({ error: 'Archivo no encontrado' });
+    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
     throw err;
   }
   res.json({ file, content });
@@ -138,8 +178,9 @@ router.get('/pull', ah(async (req, res) => {
 
 // Toggle visibility
 router.post('/toggle-visibility', ah(async (req, res) => {
-  const { file } = req.body;
-  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const parsed = FileBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file es requerido' });
+  const { file } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const isNowPublic = await toggleVisibility(file);
   invalidateSearchIndex();
@@ -148,8 +189,9 @@ router.post('/toggle-visibility', ah(async (req, res) => {
 
 // Delete doc or folder
 router.delete('/delete', ah(async (req, res) => {
-  const { file } = req.body;
-  if (!file) return res.status(400).json({ error: 'file es requerido' });
+  const parsed = FileBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file es requerido' });
+  const { file } = parsed.data;
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   // stat instead of existsSync closes the TOCTOU window for the type check.
@@ -166,7 +208,7 @@ router.delete('/delete', ah(async (req, res) => {
         const content = await readFile(fPath, 'utf-8');
         await saveVersion(fPath, content);
       } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
+        if (!isEnoent(err)) throw err;
       }
       await removeMeta(f.name);
     }));
@@ -176,9 +218,9 @@ router.delete('/delete', ah(async (req, res) => {
       const content = await readFile(filePath, 'utf-8');
       await saveVersion(filePath, content);
     } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
+      if (!isEnoent(err)) throw err;
     }
-    await unlink(filePath).catch((err) => { if (err.code !== 'ENOENT') throw err; });
+    await unlink(filePath).catch((err: unknown) => { if (!isEnoent(err)) throw err; });
     await removeMeta(file);
   }
   invalidateSearchIndex();
@@ -187,7 +229,7 @@ router.delete('/delete', ah(async (req, res) => {
 
 // Project data (tree + initial page)
 router.get('/project', ah(async (req, res) => {
-  const { folder } = req.query;
+  const folder = queryString(req.query['folder']);
   if (!folder) return res.status(400).json({ error: 'folder es requerido' });
   const folderPath = resolveDoc(folder);
   if (!folderPath) return res.status(400).json({ error: 'Ruta invalida' });
@@ -200,10 +242,12 @@ router.get('/project', ah(async (req, res) => {
 
   const activeFilePath = resolveDoc(mainPage);
   if (!activeFilePath) return res.status(400).json({ error: 'Ruta invalida' });
-  let content;
+  let content: string;
   try { content = await readFile(activeFilePath, 'utf-8'); }
   catch (err) {
-    if (err.code === 'ENOENT' || err.code === 'EISDIR') return res.status(404).json({ error: 'Pagina no encontrada' });
+    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+      return res.status(404).json({ error: 'Pagina no encontrada' });
+    }
     throw err;
   }
   const html = md.render(content);
@@ -214,14 +258,17 @@ router.get('/project', ah(async (req, res) => {
 
 // Render project page (for SPA navigation within project)
 router.get('/project/render', ah(async (req, res) => {
-  const { folder, page } = req.query;
+  const folder = queryString(req.query['folder']);
+  const page = queryString(req.query['page']);
   if (!folder || !page) return res.status(400).json({ error: 'folder y page son requeridos' });
   const filePath = resolveDoc(page);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  let content;
+  let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (err.code === 'ENOENT' || err.code === 'EISDIR') return res.status(404).json({ error: 'Pagina no encontrada' });
+    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+      return res.status(404).json({ error: 'Pagina no encontrada' });
+    }
     throw err;
   }
   const rendered = md.render(content);
@@ -230,43 +277,35 @@ router.get('/project/render', ah(async (req, res) => {
 
 // Comments
 router.get('/comments', ah(async (req, res) => {
-  const { file } = req.query;
+  const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   res.json(await getComments(file));
 }));
 
 router.post('/comments', ah(async (req, res) => {
-  const { file, text, line, author } = req.body;
-  if (!file || typeof text !== 'string') return res.status(400).json({ error: 'file y text son requeridos' });
-  const trimmedText = text.trim();
-  if (!trimmedText) return res.status(400).json({ error: 'text no puede estar vacio' });
-  if (trimmedText.length > COMMENT_TEXT_MAX) return res.status(400).json({ error: `text excede ${COMMENT_TEXT_MAX} caracteres` });
-  // line may be null/undefined or a positive integer line number
-  let normalizedLine = null;
-  if (line !== null && line !== undefined && line !== '') {
-    const n = Number(line);
-    if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: 'line debe ser un entero positivo' });
-    normalizedLine = n;
+  const parsed = CommentBody.safeParse(req.body);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return res.status(400).json({ error: first?.message ?? 'Body invalido' });
   }
-  let normalizedAuthor = 'Anonimo';
-  if (author !== undefined && author !== null) {
-    if (typeof author !== 'string') return res.status(400).json({ error: 'author invalido' });
-    const a = author.trim().slice(0, COMMENT_AUTHOR_MAX);
-    if (a) normalizedAuthor = a;
-  }
-  await addComment(file, {
+  const { file, text, line, author } = parsed.data;
+  const comment: Comment = {
     id: randomUUID(),
-    text: trimmedText,
-    line: normalizedLine,
-    author: normalizedAuthor,
+    text,
+    author,
+    createdAt: new Date().toISOString(),
+    // Mantener compat con el formato anterior que usaba `date` en vez de `createdAt`.
     date: new Date().toISOString(),
-  });
+  };
+  if (line !== null) comment.line = line;
+  await addComment(file, comment);
   res.json({ ok: true });
 }));
 
 router.post('/comments/delete', ah(async (req, res) => {
-  const { file, id } = req.body;
-  if (!file || !id) return res.status(400).json({ error: 'file y id son requeridos' });
+  const parsed = CommentDeleteBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file y id son requeridos' });
+  const { file, id } = parsed.data;
   await deleteComment(file, id);
   res.json({ ok: true });
 }));

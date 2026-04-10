@@ -1,9 +1,14 @@
-import { readdir, readFile, writeFile, mkdir, stat } from 'fs/promises';
-import { join, dirname, basename, resolve } from 'path';
+import { readdir, writeFile, mkdir, stat } from 'fs/promises';
+import { join, basename, resolve } from 'path';
 import { existsSync } from 'fs';
 import { PUB_DIR } from './config.js';
 
-export function resolveDoc(file, baseDir = PUB_DIR) {
+export type FileEntry = {
+  name: string;
+  modified: Date;
+};
+
+export function resolveDoc(file: string, baseDir: string = PUB_DIR): string | null {
   const resolved = resolve(baseDir, file);
   if (!resolved.startsWith(baseDir)) return null;
   return resolved;
@@ -13,7 +18,7 @@ export function resolveDoc(file, baseDir = PUB_DIR) {
 // not traverse into hidden segments (.meta.json, .versions/, .comments/, etc).
 // Read-only resolveDoc() is intentionally more permissive so existing metadata
 // reads keep working.
-export function isWritableDocPath(file) {
+export function isWritableDocPath(file: unknown): file is string {
   if (typeof file !== 'string' || !file) return false;
   if (file.includes('\0')) return false;
   if (!file.endsWith('.md')) return false;
@@ -22,13 +27,13 @@ export function isWritableDocPath(file) {
   return true;
 }
 
-export async function ensureDir(dir) {
+export async function ensureDir(dir: string): Promise<void> {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }
 
-export async function getFiles(dir, base = '') {
+export async function getFiles(dir: string, base = ''): Promise<FileEntry[]> {
   const entries = await readdir(dir, { withFileTypes: true });
-  let files = [];
+  let files: FileEntry[] = [];
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const rel = base ? `${base}/${entry.name}` : entry.name;
@@ -39,10 +44,10 @@ export async function getFiles(dir, base = '') {
       files.push({ name: rel, modified: stats.mtime });
     }
   }
-  return files.sort((a, b) => b.modified - a.modified);
+  return files.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
-export async function saveVersion(filePath, content) {
+export async function saveVersion(filePath: string, content: string): Promise<void> {
   const name = basename(filePath, '.md');
   const versionsDir = join(PUB_DIR, '.versions', name);
   await ensureDir(versionsDir);

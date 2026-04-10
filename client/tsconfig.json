@@ -13,10 +13,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["./shared/*"],
+      "@shared/*": ["../shared/*"],
       "@/*": ["./*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "vite-env.d.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "vite-env.d.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules", "vite.config.ts"]
 }

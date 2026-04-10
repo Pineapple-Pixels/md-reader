@@ -2,10 +2,25 @@ import { readdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 
-export async function buildTree(dir, base = '') {
+export type FolderNode = {
+  type: 'folder';
+  name: string;
+  path: string;
+  children: TreeNode[];
+};
+
+export type FileNode = {
+  type: 'file';
+  name: string;
+  path: string;
+};
+
+export type TreeNode = FolderNode | FileNode;
+
+export async function buildTree(dir: string, base = ''): Promise<TreeNode[]> {
   if (!existsSync(dir)) return [];
   const entries = await readdir(dir, { withFileTypes: true });
-  const items = [];
+  const items: TreeNode[] = [];
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const rel = base ? `${base}/${entry.name}` : entry.name;
@@ -25,12 +40,12 @@ export async function buildTree(dir, base = '') {
   return items;
 }
 
-export function findMainPage(tree, folderName) {
-  const indexFile = tree.find(i => i.type === 'file' && i.name === 'index');
+export function findMainPage(tree: TreeNode[], folderName: string): string | null {
+  const indexFile = tree.find((i): i is FileNode => i.type === 'file' && i.name === 'index');
   if (indexFile) return indexFile.path;
-  const namedFile = tree.find(i => i.type === 'file' && i.name === folderName);
+  const namedFile = tree.find((i): i is FileNode => i.type === 'file' && i.name === folderName);
   if (namedFile) return namedFile.path;
-  const firstFile = tree.find(i => i.type === 'file');
+  const firstFile = tree.find((i): i is FileNode => i.type === 'file');
   if (firstFile) return firstFile.path;
   for (const item of tree) {
     if (item.type === 'folder') {
@@ -41,8 +56,8 @@ export function findMainPage(tree, folderName) {
   return null;
 }
 
-export function flattenTree(tree) {
-  const result = [];
+export function flattenTree(tree: TreeNode[]): string[] {
+  const result: string[] = [];
   for (const item of tree) {
     if (item.type === 'file') result.push(item.path);
     if (item.type === 'folder') result.push(...flattenTree(item.children));
@@ -50,7 +65,7 @@ export function flattenTree(tree) {
   return result;
 }
 
-export function firstFileInTree(items) {
+export function firstFileInTree(items: TreeNode[]): string | null {
   for (const item of items) {
     if (item.type === 'file') return item.path;
     if (item.type === 'folder') {
@@ -61,7 +76,7 @@ export function firstFileInTree(items) {
   return null;
 }
 
-function escapeAttr(s) {
+function escapeAttr(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -70,7 +85,7 @@ function escapeAttr(s) {
     .replace(/'/g, '&#39;');
 }
 
-function escapeJsString(s) {
+function escapeJsString(s: string): string {
   return String(s)
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
@@ -81,14 +96,14 @@ function escapeJsString(s) {
     .replace(/>/g, '\\x3e');
 }
 
-function escapeHtml(s) {
+function escapeHtml(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
 
-export function renderTreeHtml(items, depth = 0) {
+export function renderTreeHtml(items: TreeNode[], depth = 0): string {
   let html = '';
   for (const item of items) {
     if (item.type === 'folder') {

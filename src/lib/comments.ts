@@ -4,13 +4,22 @@ import { existsSync } from 'fs';
 import { PUB_DIR } from './config.js';
 import { ensureDir, isWritableDocPath } from './storage.js';
 
+export type Comment = {
+  id: string;
+  line?: number;
+  text: string;
+  author?: string;
+  createdAt: string;
+  [key: string]: unknown;
+};
+
 const COMMENTS_BASE = resolve(PUB_DIR, '.comments');
 
 // Per-file write queues to serialize read-modify-write operations and
 // prevent concurrent requests from losing each other's changes.
-const writeQueues = new Map();
+const writeQueues = new Map<string, Promise<unknown>>();
 
-function resolveCommentsFile(file) {
+function resolveCommentsFile(file: string): string {
   // Path-safety rules live in storage.isWritableDocPath; reuse instead of
   // duplicating the segment/null-byte/hidden checks here.
   if (!isWritableDocPath(file)) throw new Error('Ruta invalida');
@@ -22,34 +31,37 @@ function resolveCommentsFile(file) {
   return commentsFile;
 }
 
-async function readCommentsRaw(commentsFile) {
+async function readCommentsRaw(commentsFile: string): Promise<Comment[]> {
   if (!existsSync(commentsFile)) return [];
   const data = await readFile(commentsFile, 'utf-8');
   try {
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(data);
+    return Array.isArray(parsed) ? (parsed as Comment[]) : [];
   } catch (err) {
-    console.error('[comments] invalid JSON in', commentsFile, err.message);
+    console.error('[comments] invalid JSON in', commentsFile, (err as Error).message);
     return [];
   }
 }
 
-async function atomicWrite(commentsFile, comments) {
+async function atomicWrite(commentsFile: string, comments: Comment[]): Promise<void> {
   await ensureDir(dirname(commentsFile));
   const tmp = `${commentsFile}.tmp.${process.pid}.${Math.random().toString(36).slice(2)}`;
   try {
     await writeFile(tmp, JSON.stringify(comments, null, 2));
     await rename(tmp, commentsFile);
   } catch (err) {
-    try { await unlink(tmp); } catch {}
+    // Mejor effort — si el tmp no existe es por que nunca se creo, ignoramos.
+    try { await unlink(tmp); } catch { /* ignore */ }
     throw err;
   }
 }
 
-function enqueueCommentWrite(file, mutator) {
+type CommentMutator = (comments: Comment[]) => Comment[] | void | Promise<Comment[] | void>;
+
+function enqueueCommentWrite(file: string, mutator: CommentMutator): Promise<Comment[]> {
   const commentsFile = resolveCommentsFile(file);
-  const prev = writeQueues.get(commentsFile) || Promise.resolve();
-  const run = async () => {
+  const prev = writeQueues.get(commentsFile) ?? Promise.resolve();
+  const run = async (): Promise<Comment[]> => {
     const comments = await readCommentsRaw(commentsFile);
     const result = await mutator(comments);
     const next = Array.isArray(result) ? result : comments;
@@ -68,8 +80,8 @@ function enqueueCommentWrite(file, mutator) {
   return next;
 }
 
-export async function getComments(file) {
-  let commentsFile;
+export async function getComments(file: string): Promise<Comment[]> {
+  let commentsFile: string;
   try {
     commentsFile = resolveCommentsFile(file);
   } catch {
@@ -78,13 +90,13 @@ export async function getComments(file) {
   return readCommentsRaw(commentsFile);
 }
 
-export async function addComment(file, comment) {
+export async function addComment(file: string, comment: Comment): Promise<Comment[]> {
   return enqueueCommentWrite(file, (comments) => {
     comments.push(comment);
   });
 }
 
-export async function deleteComment(file, id) {
+export async function deleteComment(file: string, id: string): Promise<Comment[]> {
   return enqueueCommentWrite(file, (comments) => {
     return comments.filter((c) => c.id !== id);
   });
