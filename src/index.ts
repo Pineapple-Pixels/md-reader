@@ -6,6 +6,7 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod';
 import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
+import { listTeamsForUser } from './lib/teams.js';
 import { seedAdminIfEmpty } from './lib/seed.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
@@ -60,7 +61,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Auth API endpoints
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', (req, res, next) => {
   const cookies = req.cookies as Record<string, string | undefined> | undefined;
   const token = cookies?.[COOKIE_NAME];
   if (!token) {
@@ -68,11 +69,22 @@ app.get('/api/auth/me', (req, res) => {
     return;
   }
   const decoded = verifyToken(token);
-  if (decoded) {
-    res.json({ authenticated: true, user: decoded.username, role: decoded.role });
+  if (!decoded) {
+    res.json({ authenticated: false });
     return;
   }
-  res.json({ authenticated: false });
+  // Hidratamos teams desde la DB (cacheado 60s) para que el cliente pueda
+  // pintar el scope-switcher sin otra ida y vuelta.
+  listTeamsForUser(decoded.userId)
+    .then((teams) => {
+      res.json({
+        authenticated: true,
+        user: decoded.username,
+        role: decoded.role,
+        teams,
+      });
+    })
+    .catch(next);
 });
 
 const LoginBody = z.object({

@@ -16,6 +16,12 @@
     "user:passwd": "tsx --env-file=.env cli/user.ts passwd",
     "user:delete": "tsx --env-file=.env cli/user.ts delete",
     "user:list": "tsx --env-file=.env cli/user.ts list",
+    "team:create": "tsx --env-file=.env cli/team.ts create",
+    "team:delete": "tsx --env-file=.env cli/team.ts delete",
+    "team:list": "tsx --env-file=.env cli/team.ts list",
+    "team:add-user": "tsx --env-file=.env cli/team.ts add-user",
+    "team:remove-user": "tsx --env-file=.env cli/team.ts remove-user",
+    "team:members": "tsx --env-file=.env cli/team.ts members",
     "postinstall": "cd client && npm install"
   },
   "dependencies": {
