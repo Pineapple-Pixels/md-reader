@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { readFile, writeFile, unlink, rm } from 'fs/promises';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
+import archiver from 'archiver';
 import { z } from 'zod';
 import { PUB_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles, ensureDir, saveVersion, isWritableDocPath } from '../lib/storage.js';
@@ -99,18 +100,43 @@ router.get('/render', ah(async (req, res) => {
   res.json({ html, commentCount: comments.length, isFilePublic: meta[file]?.public === true });
 }));
 
-// Download doc
+// Download doc (file) or project (folder → .zip with all .md files)
 router.get('/download', ah(async (req, res) => {
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
   const filePath = resolveDoc(file);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  const stats = await statOrNull(filePath);
+  if (!stats) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+  // Folder → stream a zip with all .md files preserving structure.
+  if (stats.isDirectory()) {
+    const rawFolder = file.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? 'project';
+    const safeFolder = rawFolder.replace(/[^a-zA-Z0-9._-]/g, '') || 'project';
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFolder}.zip"`);
+    res.type('application/zip');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    // If archiver fails mid-stream the response is already partially sent;
+    // destroy the socket so the client sees a broken download instead of a
+    // silently truncated zip, and log for diagnosis.
+    archive.on('error', (err) => {
+      console.error('[download] archive error:', err);
+      res.destroy(err);
+    });
+    archive.pipe(res);
+    // Recursively add all .md files under the folder, using POSIX-style paths
+    // inside the zip rooted at the folder name so extraction preserves it.
+    archive.glob('**/*.md', { cwd: filePath, dot: false }, { prefix: safeFolder });
+    await archive.finalize();
+    return;
+  }
+
+  // Single file → markdown download.
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
+    if (isEnoent(err)) return res.status(404).json({ error: 'Archivo no encontrado' });
     throw err;
   }
   const rawName = file.split('/').pop();
