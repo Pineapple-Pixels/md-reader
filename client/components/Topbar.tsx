@@ -10,7 +10,7 @@ import { useTheme } from '../hooks/useTheme';
 
 export function Topbar() {
   const { scope } = useScope();
-  const { isAuthenticated, user, teams } = useAuth();
+  const { isAuthenticated, user, role, teams } = useAuth();
   const { isDark, toggle } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -78,6 +78,9 @@ export function Topbar() {
       </div>
 
       <div className="topbar-right">
+        {isAuthenticated && role === 'admin' && (
+          <Link to="/admin" className="topbar-admin">Admin</Link>
+        )}
         {isAuthenticated && user && (
           <span className="topbar-user" title="Usuario actual">{user}</span>
         )}
