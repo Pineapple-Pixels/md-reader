@@ -1,8 +1,12 @@
 import { resolve } from 'path';
 import MarkdownIt from 'markdown-it';
 
-export const PUB_DIR = resolve(process.env['PUB_DIR'] || './pub-docs');
-export const PUB_TOKEN = process.env['PUB_TOKEN'] || '';
+// Raíz única para todos los scopes (multi-user).
+// Layout:
+//   storage/users/<userId>/   → docs privados
+//   storage/teams/<slug>/     → docs compartidos por team
+//   storage/public/           → docs visibles para todos (lectura anónima OK)
+export const STORAGE_DIR = resolve(process.env['STORAGE_DIR'] || './storage');
 
 export const ADMIN_USER = process.env['ADMIN_USER'] || 'admin';
 export const ADMIN_PASS = process.env['ADMIN_PASS'] || '';

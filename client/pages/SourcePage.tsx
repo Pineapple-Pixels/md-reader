@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@shared/api';
 import { useToast } from '../hooks/useToast';
-import { Toolbar } from '../components/Toolbar';
+import { useAuth } from '../hooks/useAuth';
+import { useScope, useScopedFetch } from '../hooks/useScope';
+import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 
 interface Comment {
   id: string;
@@ -18,26 +19,28 @@ interface SourceData {
   comments: Comment[];
 }
 
-interface SourcePageProps {
-  isPublic?: boolean;
-}
-
-export function SourcePage({ isPublic = false }: SourcePageProps) {
+export function SourcePage() {
   const location = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { scope, urlPrefix, id: scopeId } = useScope();
+  const scopedFetch = useScopedFetch();
+  const { isAuthenticated } = useAuth();
 
-  const file = isPublic
-    ? decodeURIComponent(location.pathname.replace(/^\/pub\/source\//, ''))
-    : decodeURIComponent(location.pathname.replace(/^\/source\//, ''));
+  const sourcePrefix = `${urlPrefix}/source/`;
+  const file = decodeURIComponent(location.pathname.replace(sourcePrefix, ''));
+
+  // canWrite (editar, eliminar comentarios propios) → me siempre, team miembro, public solo admin.
+  // canComment → cualquier user logueado. Anonimos (public sin login) solo ven.
+  const canWrite = scope.kind !== 'public';
+  const canComment = isAuthenticated;
 
   const { data, isLoading } = useQuery<SourceData>({
-    queryKey: ['source', file, isPublic],
+    queryKey: ['source', scopeId, file],
     queryFn: async () => {
-      const base = isPublic ? '/public' : '';
       const [pullRes, commentsRes] = await Promise.all([
-        apiFetch<{ content: string }>(`${base}/pull?file=${encodeURIComponent(file)}`),
-        apiFetch<Comment[]>(`${base}/comments?file=${encodeURIComponent(file)}`),
+        scopedFetch<{ content: string }>(`/pull?file=${encodeURIComponent(file)}`),
+        scopedFetch<Comment[]>(`/comments?file=${encodeURIComponent(file)}`),
       ]);
       return { content: pullRes.content, comments: commentsRes };
     },
@@ -45,7 +48,6 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
 
   const [openForms, setOpenForms] = useState<Set<number>>(new Set());
   const [commentTexts, setCommentTexts] = useState<Record<number, string>>({});
-  const [commentAuthors, setCommentAuthors] = useState<Record<number, string>>({});
 
   if (isLoading || !data) return <div className="container"><p style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</p></div>;
 
@@ -59,7 +61,7 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
   }
 
   function toggleForm(line: number) {
-    if (isPublic) return; // No comment forms for public view
+    if (!canComment) return;
     setOpenForms((prev) => {
       const next = new Set(prev);
       if (next.has(line)) next.delete(line);
@@ -71,14 +73,14 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
   async function addComment(line: number) {
     const text = commentTexts[line];
     if (!text) return;
-    const author = commentAuthors[line] || 'Anonimo';
     try {
-      await apiFetch('/comments', {
+      await scopedFetch('/comments', {
         method: 'POST',
-        body: JSON.stringify({ file, line, text, author }),
+        body: JSON.stringify({ file, line, text }),
       });
       setCommentTexts((p) => ({ ...p, [line]: '' }));
-      queryClient.invalidateQueries({ queryKey: ['source', file] });
+      queryClient.invalidateQueries({ queryKey: ['source', scopeId, file] });
+      queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
       toast('Comentario agregado', 'success');
     } catch {
       toast('Error al agregar comentario', 'error');
@@ -87,11 +89,12 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
 
   async function deleteComment(id: string) {
     try {
-      await apiFetch('/comments/delete', {
+      await scopedFetch('/comments/delete', {
         method: 'POST',
         body: JSON.stringify({ file, id }),
       });
-      queryClient.invalidateQueries({ queryKey: ['source', file] });
+      queryClient.invalidateQueries({ queryKey: ['source', scopeId, file] });
+      queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
       toast('Comentario eliminado', 'success');
     } catch {
       toast('Error al eliminar comentario', 'error');
@@ -102,15 +105,14 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  const homeUrl = isPublic ? '/pub' : '/';
-  const docUrl = isPublic ? `/pub/${file}` : `/doc/${file}`;
+  const docUrl = `${urlPrefix}/doc/${file}`;
 
-  const actions: any[] = [
-    { label: 'Volver', href: homeUrl },
+  const actions: ToolbarAction[] = [
+    { label: 'Volver', href: urlPrefix },
     { label: 'Ver renderizado', href: docUrl },
   ];
-  if (!isPublic) {
-    actions.push({ label: 'Editar', href: `/edit/${file}` });
+  if (canWrite) {
+    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}` });
   }
 
   return (
@@ -123,9 +125,7 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
           return (
             <div key={i}>
               <div className={`source-line${hasComment ? ' has-comment' : ''}`}>
-                {isPublic ? (
-                  <span className="line-num">{lineNum}</span>
-                ) : (
+                {canComment ? (
                   <button
                     type="button"
                     className="line-num"
@@ -135,12 +135,14 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
                   >
                     {lineNum}
                   </button>
+                ) : (
+                  <span className="line-num">{lineNum}</span>
                 )}
                 <span className="line-content" dangerouslySetInnerHTML={{ __html: escapeHtml(line) }} />
               </div>
               {hasComment && hasComment.map((c) => (
                 <div key={c.id} className="comment-box">
-                  {!isPublic && (
+                  {canWrite && (
                     <button
                       type="button"
                       className="delete-comment"
@@ -155,14 +157,8 @@ export function SourcePage({ isPublic = false }: SourcePageProps) {
                   <div className="text">{c.text}</div>
                 </div>
               ))}
-              {!isPublic && openForms.has(lineNum) && (
+              {canComment && openForms.has(lineNum) && (
                 <div className="comment-form">
-                  <input
-                    type="text"
-                    placeholder="Tu nombre"
-                    value={commentAuthors[lineNum] || 'Anonimo'}
-                    onChange={(e) => setCommentAuthors((p) => ({ ...p, [lineNum]: e.target.value }))}
-                  />
                   <input
                     type="text"
                     placeholder="Comentario..."

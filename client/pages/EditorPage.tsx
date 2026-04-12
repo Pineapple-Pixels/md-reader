@@ -1,20 +1,24 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@shared/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
+import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar } from '../components/Toolbar';
 
 export function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { urlPrefix, id: scopeId } = useScope();
+  const scopedFetch = useScopedFetch();
 
-  const file = decodeURIComponent(location.pathname.replace(/^\/edit\//, ''));
+  const editPrefix = `${urlPrefix}/edit/`;
+  const file = decodeURIComponent(location.pathname.replace(editPrefix, ''));
 
   const { data, isLoading } = useQuery({
-    queryKey: ['doc-raw', file],
-    queryFn: () => apiFetch<{ file: string; content: string }>(`/pull?file=${encodeURIComponent(file)}`),
+    queryKey: ['doc-raw', scopeId, file],
+    queryFn: () => scopedFetch<{ file: string; content: string }>(`/pull?file=${encodeURIComponent(file)}`),
   });
 
   const [content, setContent] = useState('');
@@ -28,13 +32,10 @@ export function EditorPage() {
   const pendingSaveRef = useRef<{ redirect: boolean } | null>(null);
   const contentRef = useRef('');
 
-  // Initialize content when data loads
   useEffect(() => {
     if (data?.content !== undefined) setContent(data.content);
   }, [data?.content]);
 
-  // Keep a live ref of content for doSave, which is intentionally not recreated
-  // on every keystroke.
   useEffect(() => { contentRef.current = content; }, [content]);
 
   // Reset auto-save state cuando cambia el archivo — evita que un timer pendiente
@@ -51,8 +52,6 @@ export function EditorPage() {
 
   const doSave = useCallback(async (redirect: boolean): Promise<void> => {
     if (savingRef.current) {
-      // A save is already in flight — queue this request so we don't lose it.
-      // If anyone wants to redirect, honor that on the follow-up.
       pendingSaveRef.current = { redirect: pendingSaveRef.current?.redirect || redirect };
       return;
     }
@@ -60,14 +59,16 @@ export function EditorPage() {
     setSaveStatus('Guardando...');
     setStatusColor('var(--text-muted)');
     try {
-      const res = await apiFetch<{ ok: boolean }>('/save', {
+      const res = await scopedFetch<{ ok: boolean }>('/save', {
         method: 'POST',
         body: JSON.stringify({ file, content: contentRef.current }),
       });
       if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
+        queryClient.invalidateQueries({ queryKey: ['search-index', scopeId] });
         if (redirect) {
           toast('Documento guardado', 'success');
-          navigate(`/doc/${file}`);
+          navigate(`${urlPrefix}/doc/${file}`);
           savingRef.current = false;
           return;
         }
@@ -84,7 +85,7 @@ export function EditorPage() {
     const pending = pendingSaveRef.current;
     pendingSaveRef.current = null;
     if (pending) doSave(pending.redirect);
-  }, [file, navigate, toast]);
+  }, [file, navigate, toast, scopedFetch, queryClient, scopeId, urlPrefix]);
 
   function handleChange(value: string) {
     setContent(value);
@@ -118,8 +119,8 @@ export function EditorPage() {
     <div className="container">
       <Toolbar
         actions={[
-          { label: 'Volver', href: '/' },
-          { label: 'Ver renderizado', href: `/doc/${file}` },
+          { label: 'Volver', href: urlPrefix },
+          { label: 'Ver renderizado', href: `${urlPrefix}/doc/${file}` },
           { label: 'Guardar', onClick: () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); doSave(true); }, primary: true },
         ]}
       >

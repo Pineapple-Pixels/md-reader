@@ -24,8 +24,10 @@ export function LoginPage() {
         body: JSON.stringify({ user, pass }),
       });
       if (data.ok) {
-        queryClient.setQueryData(['auth'], { authenticated: true, user });
-        navigate('/', { replace: true });
+        // Invalida el cache de auth para forzar un refetch con los teams
+        // hidratados desde la DB. Despues navegamos a /me.
+        queryClient.invalidateQueries({ queryKey: ['auth'] });
+        navigate('/me', { replace: true });
       } else {
         setError(data.error || 'Usuario o contrasena incorrectos');
       }

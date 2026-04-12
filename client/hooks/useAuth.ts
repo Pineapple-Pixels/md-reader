@@ -1,16 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
+import type { AuthResponse, TeamMembership } from '@shared/types';
 
 interface AuthState {
   isAuthenticated: boolean;
   user: string | null;
+  role: 'admin' | 'member' | null;
+  teams: TeamMembership[];
   isLoading: boolean;
   error: Error | null;
-}
-
-interface AuthResponse {
-  authenticated: boolean;
-  user?: string;
 }
 
 export function useAuth(): AuthState {
@@ -24,6 +22,8 @@ export function useAuth(): AuthState {
   return {
     isAuthenticated: data?.authenticated ?? false,
     user: data?.user ?? null,
+    role: data?.role ?? null,
+    teams: data?.teams ?? [],
     isLoading,
     error: error ?? null,
   };

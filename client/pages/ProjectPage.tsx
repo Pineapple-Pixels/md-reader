@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@shared/api';
 import { useTheme } from '../hooks/useTheme';
+import { useScope, useScopedFetch } from '../hooks/useScope';
 import { SearchModal } from '../components/SearchModal';
 
 declare const hljs: { highlightAll: () => void };
@@ -21,23 +21,18 @@ interface ProjectData {
   allPages: string[];
 }
 
-interface ProjectPageProps {
-  isPublic?: boolean;
-}
-
-export function ProjectPage({ isPublic = false }: ProjectPageProps) {
+export function ProjectPage() {
   const { folder } = useParams<{ folder: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isDark, toggle } = useTheme();
+  const { scope, urlPrefix, id: scopeId } = useScope();
+  const scopedFetch = useScopedFetch();
 
   const page = searchParams.get('page') || '';
 
   const { data, isLoading } = useQuery<ProjectData>({
-    queryKey: ['project', folder, isPublic],
-    queryFn: () => {
-      const base = isPublic ? '/public' : '';
-      return apiFetch(`${base}/project?folder=${encodeURIComponent(folder!)}`);
-    },
+    queryKey: ['project', scopeId, folder],
+    queryFn: () => scopedFetch(`/project?folder=${encodeURIComponent(folder!)}`),
   });
 
   const [currentPage, setCurrentPage] = useState('');
@@ -48,8 +43,9 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
   const loadPage = useCallback(async (pagePath: string) => {
     setLoadingPage(true);
     try {
-      const base = isPublic ? '/public' : '';
-      const res = await apiFetch<{ html: string; file: string }>(`${base}/project/render?folder=${encodeURIComponent(folder!)}&page=${encodeURIComponent(pagePath)}`);
+      const res = await scopedFetch<{ html: string; file: string }>(
+        `/project/render?folder=${encodeURIComponent(folder!)}&page=${encodeURIComponent(pagePath)}`
+      );
       setDocHtml(res.html);
       setCurrentPage(pagePath);
       setSearchParams({ page: pagePath }, { replace: true });
@@ -58,7 +54,7 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
       setDocHtml('<p style="color:var(--danger)">Error al cargar la pagina.</p>');
     }
     setLoadingPage(false);
-  }, [folder, isPublic, setSearchParams]);
+  }, [folder, scopedFetch, setSearchParams]);
 
   // Initialize when data first arrives. IMPORTANT: do not depend on `page` —
   // loadPage already calls setSearchParams({ page }), and if we re-ran this
@@ -74,8 +70,6 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
     } else {
       loadPage(target);
     }
-    // Intentionally excluding `page` and `loadPage` — this should only fire
-    // once per fresh `data` load (initial hydration / direct link into a page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
@@ -140,17 +134,15 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
 
   if (isLoading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</div>;
 
-  const homeUrl = isPublic ? '/pub' : '/';
-  const editUrl = `/edit/${currentPage}`;
+  const canWrite = scope.kind !== 'public';
+  const editUrl = `${urlPrefix}/edit/${currentPage}`;
 
   return (
     <div className="project-layout" style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="project-toolbar">
-        <Link to={homeUrl}>&larr; Volver</Link>
+        <Link to={urlPrefix}>&larr; Volver</Link>
         <span className="title" style={{ fontWeight: 600, fontSize: 15, marginRight: 'auto' }}>{folder}</span>
-        {!isPublic && (
-          <Link to={editUrl} className="primary">Editar</Link>
-        )}
+        {canWrite && <Link to={editUrl} className="primary">Editar</Link>}
         <button className="theme-toggle" onClick={toggle}>{isDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}</button>
       </div>
       <div className="project-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -167,7 +159,7 @@ export function ProjectPage({ isPublic = false }: ProjectPageProps) {
           )}
         </main>
       </div>
-      {!isPublic && <SearchModal />}
+      {canWrite && <SearchModal />}
     </div>
   );
 }

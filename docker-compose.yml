@@ -6,12 +6,12 @@ services:
       - "3500"
     environment:
       - DATABASE_URL=postgres://mdreader:mdreader@postgres:5432/mdreader
+      - STORAGE_DIR=/app/storage
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - pub-docs:/app/pub-docs
-      - pub-local:/app/pub-local
+      - storage-data:/app/storage
 
   postgres:
     image: postgres:16-alpine
@@ -32,6 +32,5 @@ services:
       retries: 10
 
 volumes:
-  pub-docs:
-  pub-local:
+  storage-data:
   pg-data:

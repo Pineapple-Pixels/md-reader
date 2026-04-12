@@ -3,25 +3,27 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import MiniSearch from 'minisearch';
-import { apiFetch } from '@shared/api';
 import type { SearchEntry } from '@shared/types';
+import { useScope, useScopedFetch } from '../hooks/useScope';
 
 export function SearchModal() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { urlPrefix, id: scopeId } = useScope();
+  const scopedFetch = useScopedFetch();
 
   const { data: entries = [] } = useQuery<SearchEntry[]>({
-    queryKey: ['search-index'],
-    queryFn: () => apiFetch('/search-index'),
+    queryKey: ['search-index', scopeId],
+    queryFn: () => scopedFetch('/search-index'),
     enabled: open,
   });
 
   const miniSearch = useMemo(() => {
     const ms = new MiniSearch<SearchEntry>({
       fields: ['title', 'content'],
-      storeFields: ['file', 'title', 'content', 'public'],
+      storeFields: ['file', 'title', 'content'],
       searchOptions: { fuzzy: 0.2, prefix: true, boost: { title: 3 } },
     });
     if (entries.length) ms.addAll(entries.map((e, i) => ({ ...e, id: i })));
@@ -56,7 +58,7 @@ export function SearchModal() {
 
   function handleNavigate(file: string) {
     setOpen(false);
-    navigate(`/doc/${file}`);
+    navigate(`${urlPrefix}/doc/${file}`);
   }
 
   function highlight(text: string, q: string) {
@@ -65,8 +67,6 @@ export function SearchModal() {
     const pattern = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const re = new RegExp(`(${pattern})`, 'gi');
     const parts = text.split(re);
-    // split() con capturing group devuelve [texto, match, texto, match, ...]
-    // Los indices impares son las capturas.
     return parts.map((part, i) =>
       i % 2 === 1
         ? <mark key={i} style={{ background: 'var(--warning-bg)', color: 'var(--text)', padding: '0 1px', borderRadius: 2 }}>{part}</mark>
@@ -101,7 +101,6 @@ export function SearchModal() {
               >
                 <div className="search-item-header">
                   <span className="search-item-title">{highlight(entry.title, query)}</span>
-                  {entry.public && <span className="search-badge">publico</span>}
                 </div>
                 <span className="search-item-path">{entry.file}</span>
                 {query.trim() && entry.content && (

@@ -1,20 +1,21 @@
-/** Shared types between server and client islands */
-
-export interface DocMeta {
-  name: string;
-  path: string;
-  public: boolean;
-  folder?: string;
-}
-
-export interface IslandProps {
-  [key: string]: unknown;
-}
+/** Shared types between server and client */
 
 export interface SearchEntry {
   file: string;
   title: string;
   content: string;
-  public: boolean;
   mtime: string;
+}
+
+export interface TeamMembership {
+  slug: string;
+  name: string;
+  role: 'admin' | 'member';
+}
+
+export interface AuthResponse {
+  authenticated: boolean;
+  user?: string;
+  role?: 'admin' | 'member';
+  teams?: TeamMembership[];
 }

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@shared/api';
 import { useToast } from '../hooks/useToast';
+import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 
 declare const hljs: { highlightAll: () => void };
@@ -10,37 +10,32 @@ declare const hljs: { highlightAll: () => void };
 interface DocData {
   html: string;
   commentCount: number;
-  isFilePublic: boolean;
+  canWrite?: boolean;
+  canComment?: boolean;
 }
 
-interface DocPageProps {
-  isPublic?: boolean;
-}
-
-export function DocPage({ isPublic = false }: DocPageProps) {
+export function DocPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { scope, urlPrefix, id: scopeId } = useScope();
+  const scopedFetch = useScopedFetch();
 
-  // Extract file path from URL: /doc/some/file.md or /pub/some/file.md
-  // decodeURIComponent needed because location.pathname is percent-encoded by the browser
-  const file = isPublic
-    ? decodeURIComponent(location.pathname.replace(/^\/pub\//, ''))
-    : decodeURIComponent(location.pathname.replace(/^\/doc\//, ''));
-
-  const apiUrl = isPublic ? `/public/render?file=${encodeURIComponent(file)}` : `/render?file=${encodeURIComponent(file)}`;
+  // El path del archivo viene despues del prefix del scope + "/doc/".
+  // Ej: `/me/doc/foo/bar.md` → file = 'foo/bar.md'.
+  const docPrefix = `${urlPrefix}/doc/`;
+  const file = decodeURIComponent(location.pathname.replace(docPrefix, ''));
 
   const { data, isLoading, error } = useQuery<DocData>({
-    queryKey: ['doc', file, isPublic],
-    queryFn: () => apiFetch(apiUrl),
+    queryKey: ['doc', scopeId, file],
+    queryFn: () => scopedFetch(`/render?file=${encodeURIComponent(file)}`),
   });
 
   useEffect(() => {
     if (data?.html) {
       setTimeout(() => {
         hljs?.highlightAll();
-        // Add copy buttons to code blocks
         document.querySelectorAll('.doc pre').forEach((pre) => {
           if (pre.querySelector('.copy-btn')) return;
           const btn = document.createElement('button');
@@ -67,50 +62,39 @@ export function DocPage({ isPublic = false }: DocPageProps) {
   async function handleDelete() {
     if (!confirm('Eliminar este documento?')) return;
     try {
-      const res = await apiFetch<{ ok: boolean }>('/delete', {
+      const res = await scopedFetch<{ ok: boolean }>('/delete', {
         method: 'DELETE',
         body: JSON.stringify({ file }),
       });
       if (res.ok) {
         toast('Documento eliminado', 'success');
-        navigate('/');
+        queryClient.invalidateQueries({ queryKey: ['docs', scopeId] });
+        navigate(urlPrefix);
       }
     } catch {
       toast('Error al eliminar', 'error');
     }
   }
 
-  async function handleToggleVis() {
-    try {
-      const res = await apiFetch<{ ok: boolean; public: boolean }>('/toggle-visibility', {
-        method: 'POST',
-        body: JSON.stringify({ file }),
-      });
-      if (res.ok) {
-        toast(res.public ? 'Ahora es publico' : 'Ahora es privado', 'success');
-        queryClient.invalidateQueries({ queryKey: ['doc', file] });
-      }
-    } catch {
-      toast('Error al cambiar visibilidad', 'error');
-    }
-  }
-
   if (isLoading) return <div className="container"><p style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</p></div>;
   if (error) return <div className="container"><p style={{ color: 'var(--danger)' }}>Error al cargar el documento.</p></div>;
 
-  const homeUrl = isPublic ? '/pub' : '/';
-  const sourceUrl = isPublic ? `/pub/source/${file}` : `/source/${file}`;
+  const canWrite = data?.canWrite ?? false;
+  const sourceUrl = `${urlPrefix}/source/${file}`;
   const commentLabel = `Codigo fuente${data?.commentCount ? ` (${data.commentCount})` : ''}`;
 
   const actions: ToolbarAction[] = [
-    { label: 'Volver', href: homeUrl },
+    { label: 'Volver', href: urlPrefix },
     { label: commentLabel, href: sourceUrl },
   ];
 
-  if (!isPublic) {
-    actions.push({ label: 'Editar', href: `/edit/${file}`, primary: true });
-    actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' });
-    actions.push({ label: data?.isFilePublic ? 'Publico' : 'Privado', onClick: handleToggleVis, className: `action-btn ${data?.isFilePublic ? 'publish-btn' : ''}` });
+  if (canWrite) {
+    const scopeParam =
+      scope.kind === 'me' ? 'me' :
+      scope.kind === 'team' ? `team:${scope.slug}` :
+      'public';
+    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true });
+    actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?scope=${encodeURIComponent(scopeParam)}&file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' });
     actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
   }
 

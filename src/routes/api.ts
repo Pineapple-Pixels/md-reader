@@ -1,14 +1,29 @@
 import { Router } from 'express';
+import type { Response } from 'express';
 import { readFile, writeFile, unlink, rm } from 'fs/promises';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import archiver from 'archiver';
 import { z } from 'zod';
-import { PUB_DIR, md } from '../lib/config.js';
-import { resolveDoc, getFiles, ensureDir, saveVersion, isWritableDocPath } from '../lib/storage.js';
-import { getComments, addComment, deleteComment, deleteAllComments, type Comment } from '../lib/comments.js';
-import { requireTokenOrAuth } from '../lib/auth.js';
-import { toggleVisibility, removeMeta, getMeta } from '../lib/meta.js';
+import { md } from '../lib/config.js';
+import {
+  resolveDoc,
+  getFiles,
+  ensureDir,
+  saveVersion,
+  isWritableDocPath,
+  resolveScope,
+  ScopeError,
+} from '../lib/storage.js';
+import type { ResolvedScope } from '../lib/storage.js';
+import {
+  getComments,
+  addComment,
+  deleteComment,
+  deleteAllComments,
+  type Comment,
+} from '../lib/comments.js';
+import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
 import { ah, statOrNull, isEnoent, queryString } from '../lib/route-helpers.js';
@@ -20,6 +35,8 @@ const COMMENT_TEXT_MAX = 2000;
 const COMMENT_AUTHOR_MAX = 100;
 
 // ----- Body schemas (zod) -----
+// El scope viaja siempre como query param (no body) para mantener semantica REST
+// uniforme entre GET y POST. Los bodies solo cargan datos del doc.
 const FileContentBody = z.object({
   file: z.string().min(1),
   content: z.string(),
@@ -59,32 +76,55 @@ const CommentDeleteBody = z.object({
   id: z.string().min(1),
 });
 
-// All API routes require auth (cookie or token)
-router.use(requireTokenOrAuth);
+// All private API routes require cookie auth.
+router.use(requireAuth);
+
+// Helper: resuelve el scope del query o manda el error HTTP apropiado.
+// Retorna null si falla para que el handler pueda hacer `if (!scope) return;`.
+function getScope(req: import('express').Request, res: Response): ResolvedScope | null {
+  try {
+    return resolveScope(queryString(req.query['scope']), req.user);
+  } catch (err) {
+    if (err instanceof ScopeError) {
+      res.status(err.status).json({ error: err.message });
+      return null;
+    }
+    throw err;
+  }
+}
+
+// Guard de escritura — usar despues de getScope.
+function assertWritable(scope: ResolvedScope, res: Response): boolean {
+  if (!scope.canWrite) {
+    res.status(403).json({ error: 'No tenes permiso de escritura en este scope' });
+    return false;
+  }
+  return true;
+}
 
 // Search index
-router.get('/search-index', ah(async (_req, res) => {
-  const index = await getSearchIndex();
+router.get('/search-index', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  const index = await getSearchIndex(scope.id, scope.basePath);
   res.json(index);
 }));
 
 // List all docs
-router.get('/docs', ah(async (_req, res) => {
-  const files = await getFiles(PUB_DIR);
+router.get('/docs', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  const files = await getFiles(scope.basePath);
   res.json(files);
-}));
-
-// Get metadata (visibility info)
-router.get('/meta', ah(async (_req, res) => {
-  const meta = await getMeta();
-  res.json(meta);
 }));
 
 // Render a single doc to HTML
 router.get('/render', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
@@ -95,16 +135,17 @@ router.get('/render', ah(async (req, res) => {
     throw err;
   }
   const html = md.render(content);
-  const comments = await getComments(file);
-  const meta = await getMeta();
-  res.json({ html, commentCount: comments.length, isFilePublic: meta[file]?.public === true });
+  const comments = await getComments(scope.basePath, file);
+  res.json({ html, commentCount: comments.length, canWrite: scope.canWrite, canComment: scope.canComment });
 }));
 
 // Download doc (file) or project (folder → .zip with all .md files)
 router.get('/download', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const stats = await statOrNull(filePath);
   if (!stats) return res.status(404).json({ error: 'Archivo no encontrado' });
@@ -125,8 +166,6 @@ router.get('/download', ah(async (req, res) => {
       res.destroy(err);
     });
     archive.pipe(res);
-    // Recursively add all .md files under the folder, using POSIX-style paths
-    // inside the zip rooted at the folder name so extraction preserves it.
     archive.glob('**/*.md', { cwd: filePath, dot: false }, { prefix: safeFolder });
     await archive.finalize();
     return;
@@ -145,51 +184,59 @@ router.get('/download', ah(async (req, res) => {
   res.type('text/markdown').send(content);
 }));
 
-// Upload/push doc
+// Upload/push doc (crear o sobrescribir — usa versionado como backup)
 router.post('/push', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
   const parsed = FileContentBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
   const { file, content } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   await ensureDir(dirname(filePath));
   // Best-effort version backup — missing previous file is fine.
   try {
     const old = await readFile(filePath, 'utf-8');
-    await saveVersion(filePath, old);
+    await saveVersion(filePath, old, scope.basePath);
   } catch (err) {
     if (!isEnoent(err)) throw err;
   }
   await writeFile(filePath, content);
-  invalidateSearchIndex();
-  res.json({ ok: true, url: `/doc/${file}` });
+  invalidateSearchIndex(scope.id);
+  res.json({ ok: true });
 }));
 
 // Save doc (with version backup)
 router.post('/save', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
   const parsed = FileContentBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
   const { file, content } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   try {
     const old = await readFile(filePath, 'utf-8');
-    await saveVersion(filePath, old);
+    await saveVersion(filePath, old, scope.basePath);
   } catch (err) {
     if (!isEnoent(err)) throw err;
   }
   await writeFile(filePath, content);
-  invalidateSearchIndex();
+  invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));
 
 // Pull doc (raw content)
 router.get('/pull', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
@@ -202,64 +249,56 @@ router.get('/pull', ah(async (req, res) => {
   res.json({ file, content });
 }));
 
-// Toggle visibility
-router.post('/toggle-visibility', ah(async (req, res) => {
-  const parsed = FileBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'file es requerido' });
-  const { file } = parsed.data;
-  if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
-  const isNowPublic = await toggleVisibility(file);
-  invalidateSearchIndex();
-  res.json({ ok: true, public: isNowPublic });
-}));
-
 // Delete doc or folder
 router.delete('/delete', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
   const parsed = FileBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file es requerido' });
   const { file } = parsed.data;
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   // stat instead of existsSync closes the TOCTOU window for the type check.
   const stats = await statOrNull(filePath);
   if (!stats) return res.status(404).json({ error: 'Archivo no encontrado' });
   if (stats.isDirectory()) {
     // getFiles returns names relative to the directory passed in — we need them
-    // relative to PUB_DIR so resolveDoc() and removeMeta() work correctly.
+    // relative to scope.basePath so resolveDoc y deleteAllComments trabajen bien.
     const files = await getFiles(filePath, file);
     await Promise.all(files.map(async (f) => {
-      const fPath = resolveDoc(f.name);
+      const fPath = resolveDoc(f.name, scope.basePath);
       if (!fPath) return;
       try {
         const content = await readFile(fPath, 'utf-8');
-        await saveVersion(fPath, content);
+        await saveVersion(fPath, content, scope.basePath);
       } catch (err) {
         if (!isEnoent(err)) throw err;
       }
-      await removeMeta(f.name);
-      await deleteAllComments(f.name);
+      await deleteAllComments(scope.basePath, f.name);
     }));
     await rm(filePath, { recursive: true, force: true });
   } else {
     try {
       const content = await readFile(filePath, 'utf-8');
-      await saveVersion(filePath, content);
+      await saveVersion(filePath, content, scope.basePath);
     } catch (err) {
       if (!isEnoent(err)) throw err;
     }
     await unlink(filePath).catch((err: unknown) => { if (!isEnoent(err)) throw err; });
-    await removeMeta(file);
-    await deleteAllComments(file);
+    await deleteAllComments(scope.basePath, file);
   }
-  invalidateSearchIndex();
+  invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));
 
 // Project data (tree + initial page)
 router.get('/project', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const folder = queryString(req.query['folder']);
   if (!folder) return res.status(400).json({ error: 'folder es requerido' });
-  const folderPath = resolveDoc(folder);
+  const folderPath = resolveDoc(folder, scope.basePath);
   if (!folderPath) return res.status(400).json({ error: 'Ruta invalida' });
   const stats = await statOrNull(folderPath);
   if (!stats || !stats.isDirectory()) return res.status(404).json({ error: 'Carpeta no encontrada' });
@@ -268,7 +307,7 @@ router.get('/project', ah(async (req, res) => {
   const mainPage = findMainPage(tree, folder);
   if (!mainPage) return res.status(404).json({ error: 'No se encontraron archivos .md' });
 
-  const activeFilePath = resolveDoc(mainPage);
+  const activeFilePath = resolveDoc(mainPage, scope.basePath);
   if (!activeFilePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
   try { content = await readFile(activeFilePath, 'utf-8'); }
@@ -286,10 +325,12 @@ router.get('/project', ah(async (req, res) => {
 
 // Render project page (for SPA navigation within project)
 router.get('/project/render', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const folder = queryString(req.query['folder']);
   const page = queryString(req.query['page']);
   if (!folder || !page) return res.status(400).json({ error: 'folder y page son requeridos' });
-  const filePath = resolveDoc(page);
+  const filePath = resolveDoc(page, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
@@ -305,40 +346,55 @@ router.get('/project/render', ah(async (req, res) => {
 
 // Comments
 router.get('/comments', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  res.json(await getComments(file));
+  res.json(await getComments(scope.basePath, file));
 }));
 
 router.post('/comments', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!scope.canComment) {
+    return res.status(403).json({ error: 'No podes comentar en este scope' });
+  }
   const parsed = CommentBody.safeParse(req.body);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return res.status(400).json({ error: first?.message ?? 'Body invalido' });
   }
   const { file, text, line, author } = parsed.data;
-  const filePath = resolveDoc(file);
+  const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const stats = await statOrNull(filePath);
   if (!stats || !stats.isFile()) return res.status(404).json({ error: 'Archivo no encontrado' });
+  // Si el user esta logueado, usamos su username como author autoritativo
+  // (el body.author se ignora para prevenir impersonation).
+  const resolvedAuthor = req.user?.username ?? author;
   const comment: Comment = {
     id: randomUUID(),
     text,
-    author,
+    author: resolvedAuthor,
     createdAt: new Date().toISOString(),
     // Mantener compat con el formato anterior que usaba `date` en vez de `createdAt`.
     date: new Date().toISOString(),
   };
   if (line !== null) comment.line = line;
-  await addComment(file, comment);
+  await addComment(scope.basePath, file, comment);
   res.json({ ok: true });
 }));
 
 router.post('/comments/delete', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!scope.canComment) {
+    return res.status(403).json({ error: 'No podes borrar comentarios en este scope' });
+  }
   const parsed = CommentDeleteBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y id son requeridos' });
   const { file, id } = parsed.data;
-  await deleteComment(file, id);
+  await deleteComment(scope.basePath, file, id);
   res.json({ ok: true });
 }));
 

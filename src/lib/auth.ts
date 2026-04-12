@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { JWT_SECRET, PUB_TOKEN } from './config.js';
+import { JWT_SECRET } from './config.js';
 import { findByUsername, verifyPassword } from './users.js';
 import type { UserRole } from './users.js';
 import { listTeamsForUser } from './teams.js';
@@ -23,14 +22,6 @@ export type AuthPayload = {
 export type AuthUser = AuthPayload & {
   teams: TeamMembership[];
 };
-
-function safeEqual(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
 
 // `req.cookies` viene tipado como `any` por @types/cookie-parser; lo centralizamos
 // aca para que el resto del codigo trabaje con un tipo concreto.
@@ -98,6 +89,9 @@ export function verifyToken(token: string): AuthPayload | null {
   }
 }
 
+// Middleware unico para la API JSON. Devuelve 401 si no hay cookie valida —
+// el redirect al /login lo maneja el SPA client-side (React Router), no el
+// backend. Hidrata req.user con teams desde la DB (cache de 60s).
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = readCookie(req, COOKIE_NAME);
   if (token) {
@@ -113,38 +107,26 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
     }
   }
-  res.redirect('/login');
-}
-
-export async function requireTokenOrAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-  // CLI token auth via header (comparacion en tiempo constante).
-  // Nota: el PUB_TOKEN no representa a un user, asi que `req.user` queda
-  // undefined en esta rama. Las rutas que necesiten identidad deben
-  // chequearlo. En Fase 2 ninguna lo usa todavia.
-  const headerToken = req.headers['x-pub-token'];
-  if (typeof headerToken === 'string' && PUB_TOKEN && safeEqual(headerToken, PUB_TOKEN)) {
-    next();
-    return;
-  }
-  // Cookie auth
-  const cookie = readCookie(req, COOKIE_NAME);
-  if (cookie) {
-    const decoded = verifyToken(cookie);
-    if (decoded) {
-      try {
-        req.user = await hydrateUser(decoded);
-        next();
-        return;
-      } catch (err) {
-        next(err);
-        return;
-      }
-    }
-  }
   res.status(401).json({ error: 'No autorizado' });
 }
 
-// Helper para autorizacion por team. Usar despues de requireAuth/requireTokenOrAuth.
+// Variante que hidrata el user si hay cookie valida pero no falla si no la hay.
+// Uso: endpoints publicos que igual quieren saber quien esta logueado (ej. para
+// permitir comentarios en docs publicos solo a users autenticados).
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const token = readCookie(req, COOKIE_NAME);
+  if (!token) { next(); return; }
+  const decoded = verifyToken(token);
+  if (!decoded) { next(); return; }
+  try {
+    req.user = await hydrateUser(decoded);
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Helper para autorizacion por team. Usar despues de requireAuth.
 export function userHasTeam(req: Request, slug: string): boolean {
   const user = req.user;
   if (!user) return false;

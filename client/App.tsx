@@ -1,22 +1,21 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import { ToastProvider } from './hooks/useToast';
-import { Layout } from './components/Layout';
+import { ScopeLayout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
-import { PrivateIndexPage } from './pages/PrivateIndexPage';
-import { PublicIndexPage } from './pages/PublicIndexPage';
+import { IndexPage } from './pages/IndexPage';
 import { DocPage } from './pages/DocPage';
 import { EditorPage } from './pages/EditorPage';
 import { SourcePage } from './pages/SourcePage';
 import { ProjectPage } from './pages/ProjectPage';
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return <div className="container"><p style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</p></div>;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
+// Rutas del cliente. Los scopes son los tres prefijos estables:
+//   /me/*      → docs privados del user (requiere auth)
+//   /t/:slug/* → docs del team (requiere auth + membership)
+//   /pub/*     → docs publicos (lectura anonima, comentar requiere login)
+//
+// Dentro de cada scope las sub-rutas son identicas. ScopeLayout inyecta el
+// ScopeContext asi las paginas hijas no necesitan conocer el prefijo.
 
 export function App() {
   return (
@@ -25,22 +24,32 @@ export function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Public routes */}
-          <Route path="/pub" element={<Layout />}>
-            <Route index element={<PublicIndexPage />} />
-            <Route path="project/:folder" element={<ProjectPage isPublic />} />
-            <Route path="source/*" element={<SourcePage isPublic />} />
-            <Route path="*" element={<DocPage isPublic />} />
-          </Route>
-
-          {/* Private routes */}
-          <Route path="/" element={<PrivateRoute><Layout isPrivate /></PrivateRoute>}>
-            <Route index element={<PrivateIndexPage />} />
-            <Route path="project/:folder" element={<ProjectPage />} />
+          <Route path="/me" element={<ScopeLayout kind="me" />}>
+            <Route index element={<IndexPage />} />
             <Route path="doc/*" element={<DocPage />} />
             <Route path="edit/*" element={<EditorPage />} />
             <Route path="source/*" element={<SourcePage />} />
+            <Route path="project/:folder" element={<ProjectPage />} />
           </Route>
+
+          <Route path="/t/:slug" element={<ScopeLayout kind="team" />}>
+            <Route index element={<IndexPage />} />
+            <Route path="doc/*" element={<DocPage />} />
+            <Route path="edit/*" element={<EditorPage />} />
+            <Route path="source/*" element={<SourcePage />} />
+            <Route path="project/:folder" element={<ProjectPage />} />
+          </Route>
+
+          <Route path="/pub" element={<ScopeLayout kind="public" />}>
+            <Route index element={<IndexPage />} />
+            <Route path="doc/*" element={<DocPage />} />
+            <Route path="source/*" element={<SourcePage />} />
+            <Route path="project/:folder" element={<ProjectPage />} />
+          </Route>
+
+          {/* Raiz: si hay sesion el scope layout de /me hara el rebote a /login. */}
+          <Route path="/" element={<Navigate to="/me" replace />} />
+          <Route path="*" element={<Navigate to="/me" replace />} />
         </Routes>
       </ToastProvider>
     </ThemeProvider>

@@ -1,7 +1,6 @@
 import { readFile, writeFile, rename, unlink } from 'fs/promises';
-import { dirname, resolve, sep } from 'path';
+import { dirname, resolve, join, sep } from 'path';
 import { existsSync } from 'fs';
-import { PUB_DIR } from './config.js';
 import { ensureDir, isWritableDocPath } from './storage.js';
 
 export type Comment = {
@@ -13,19 +12,22 @@ export type Comment = {
   [key: string]: unknown;
 };
 
-const COMMENTS_BASE = resolve(PUB_DIR, '.comments');
+// Los comentarios viven adentro de cada scope: <basePath>/.comments/<file>.json.
+// Asi se mueven solos si en el futuro movemos docs entre scopes, y el aislamiento
+// queda garantizado por el mismo mecanismo de permisos del scope.
 
-// Per-file write queues to serialize read-modify-write operations and
-// prevent concurrent requests from losing each other's changes.
+// Cola de writes per-file para serializar read-modify-write y evitar que
+// requests concurrentes se pisen.
 const writeQueues = new Map<string, Promise<unknown>>();
 
-function resolveCommentsFile(file: string): string {
-  // Path-safety rules live in storage.isWritableDocPath; reuse instead of
-  // duplicating the segment/null-byte/hidden checks here.
+function resolveCommentsFile(basePath: string, file: string): string {
+  // Las reglas de path-safety viven en storage.isWritableDocPath; las reusamos
+  // aca en vez de duplicar los chequeos de segmentos/null-byte/hidden.
   if (!isWritableDocPath(file)) throw new Error('Ruta invalida');
-  const commentsFile = resolve(COMMENTS_BASE, `${file}.json`);
-  // Defense in depth — resolve() should already keep us inside COMMENTS_BASE.
-  if (!commentsFile.startsWith(COMMENTS_BASE + sep)) {
+  const commentsBase = join(basePath, '.comments');
+  const commentsFile = resolve(commentsBase, `${file}.json`);
+  // Defensa en profundidad: resolve() ya deberia mantenernos adentro.
+  if (!commentsFile.startsWith(commentsBase + sep)) {
     throw new Error('Ruta invalida');
   }
   return commentsFile;
@@ -50,7 +52,7 @@ async function atomicWrite(commentsFile: string, comments: Comment[]): Promise<v
     await writeFile(tmp, JSON.stringify(comments, null, 2));
     await rename(tmp, commentsFile);
   } catch (err) {
-    // Mejor effort — si el tmp no existe es por que nunca se creo, ignoramos.
+    // Best effort — si el tmp no se creo, ignoramos.
     try { await unlink(tmp); } catch { /* ignore */ }
     throw err;
   }
@@ -58,8 +60,12 @@ async function atomicWrite(commentsFile: string, comments: Comment[]): Promise<v
 
 type CommentMutator = (comments: Comment[]) => Comment[] | void | Promise<Comment[] | void>;
 
-function enqueueCommentWrite(file: string, mutator: CommentMutator): Promise<Comment[]> {
-  const commentsFile = resolveCommentsFile(file);
+function enqueueCommentWrite(
+  basePath: string,
+  file: string,
+  mutator: CommentMutator,
+): Promise<Comment[]> {
+  const commentsFile = resolveCommentsFile(basePath, file);
   const prev = writeQueues.get(commentsFile) ?? Promise.resolve();
   const run = async (): Promise<Comment[]> => {
     const comments = await readCommentsRaw(commentsFile);
@@ -69,8 +75,8 @@ function enqueueCommentWrite(file: string, mutator: CommentMutator): Promise<Com
     return next;
   };
   const next = prev.then(run, run);
-  // Keep the queue alive even if a write fails; surface the failure to the
-  // caller via `next` but prevent one failure from blocking further writes.
+  // Mantenemos la cola viva incluso si un write falla; exponemos el error via
+  // `next` pero evitamos que un fallo bloquee writes subsecuentes.
   writeQueues.set(
     commentsFile,
     next.catch((err) => {
@@ -80,32 +86,40 @@ function enqueueCommentWrite(file: string, mutator: CommentMutator): Promise<Com
   return next;
 }
 
-export async function getComments(file: string): Promise<Comment[]> {
+export async function getComments(basePath: string, file: string): Promise<Comment[]> {
   let commentsFile: string;
   try {
-    commentsFile = resolveCommentsFile(file);
+    commentsFile = resolveCommentsFile(basePath, file);
   } catch {
     return [];
   }
   return readCommentsRaw(commentsFile);
 }
 
-export async function addComment(file: string, comment: Comment): Promise<Comment[]> {
-  return enqueueCommentWrite(file, (comments) => {
+export async function addComment(
+  basePath: string,
+  file: string,
+  comment: Comment,
+): Promise<Comment[]> {
+  return enqueueCommentWrite(basePath, file, (comments) => {
     comments.push(comment);
   });
 }
 
-export async function deleteComment(file: string, id: string): Promise<Comment[]> {
-  return enqueueCommentWrite(file, (comments) => {
+export async function deleteComment(
+  basePath: string,
+  file: string,
+  id: string,
+): Promise<Comment[]> {
+  return enqueueCommentWrite(basePath, file, (comments) => {
     return comments.filter((c) => c.id !== id);
   });
 }
 
-export async function deleteAllComments(file: string): Promise<void> {
+export async function deleteAllComments(basePath: string, file: string): Promise<void> {
   let commentsFile: string;
   try {
-    commentsFile = resolveCommentsFile(file);
+    commentsFile = resolveCommentsFile(basePath, file);
   } catch {
     // Ruta invalida → nada que borrar.
     return;
