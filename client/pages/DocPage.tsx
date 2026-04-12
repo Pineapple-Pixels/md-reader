@@ -1,14 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
+import type { Comment } from '@shared/types';
 
 declare const hljs: { highlightAll: () => void };
 
 interface DocData {
   html: string;
+  comments: Comment[];
   commentCount: number;
   canWrite?: boolean;
   canComment?: boolean;
@@ -21,9 +24,9 @@ export function DocPage() {
   const queryClient = useQueryClient();
   const { scope, urlPrefix, id: scopeId } = useScope();
   const scopedFetch = useScopedFetch();
+  const { isAuthenticated } = useAuth();
+  const docRef = useRef<HTMLDivElement>(null);
 
-  // El path del archivo viene despues del prefix del scope + "/doc/".
-  // Ej: `/me/doc/foo/bar.md` → file = 'foo/bar.md'.
   const docPrefix = `${urlPrefix}/doc/`;
   const file = decodeURIComponent(location.pathname.replace(docPrefix, ''));
 
@@ -31,6 +34,12 @@ export function DocPage() {
     queryKey: ['doc', scopeId, file],
     queryFn: () => scopedFetch(`/render?file=${encodeURIComponent(file)}`),
   });
+
+  const [activeBlock, setActiveBlock] = useState<number | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const canComment = isAuthenticated && (data?.canComment ?? false);
 
   useEffect(() => {
     if (data?.html) {
@@ -58,6 +67,119 @@ export function DocPage() {
       }, 0);
     }
   }, [data?.html]);
+
+  // Group comments by source line
+  const commentsByLine: Record<number, Comment[]> = {};
+  if (data?.comments) {
+    for (const c of data.comments) {
+      if (c.line != null) {
+        if (!commentsByLine[c.line]) commentsByLine[c.line] = [];
+        commentsByLine[c.line].push(c);
+      }
+    }
+  }
+
+  // Inject comment indicators after render
+  useEffect(() => {
+    if (!docRef.current || !data) return;
+    // Clean previous indicators
+    docRef.current.querySelectorAll('.doc-comment-indicator').forEach((el) => el.remove());
+    docRef.current.querySelectorAll('.doc-comment-block').forEach((el) => el.remove());
+    docRef.current.querySelectorAll('[data-source-line]').forEach((el) => {
+      el.classList.remove('has-inline-comments', 'comment-active-block');
+    });
+
+    const elements = docRef.current.querySelectorAll<HTMLElement>('[data-source-line]');
+    elements.forEach((el) => {
+      const line = parseInt(el.getAttribute('data-source-line') || '0', 10);
+      const lineEnd = parseInt(el.getAttribute('data-source-line-end') || '0', 10);
+      if (!line) return;
+
+      // Find comments that fall within this block's line range
+      const blockComments: Comment[] = [];
+      for (let l = line; l <= lineEnd; l++) {
+        if (commentsByLine[l]) blockComments.push(...commentsByLine[l]);
+      }
+
+      if (blockComments.length > 0) {
+        el.classList.add('has-inline-comments');
+        // Add count indicator
+        const badge = document.createElement('button');
+        badge.className = 'doc-comment-indicator';
+        badge.textContent = String(blockComments.length);
+        badge.title = `${blockComments.length} comentario(s)`;
+        badge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setActiveBlock((prev) => (prev === line ? null : line));
+        });
+        el.style.position = 'relative';
+        el.appendChild(badge);
+      }
+
+      // Commentable block hover handler
+      if (canComment) {
+        el.classList.add('commentable-block');
+        if (!blockComments.length) {
+          const addBtn = document.createElement('button');
+          addBtn.className = 'doc-comment-add';
+          addBtn.textContent = '+';
+          addBtn.title = 'Agregar comentario';
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setActiveBlock((prev) => (prev === line ? null : line));
+          });
+          el.style.position = 'relative';
+          el.appendChild(addBtn);
+        }
+      }
+
+      // Active block marker
+      if (activeBlock === line) {
+        el.classList.add('comment-active-block');
+      }
+    });
+  }, [data, commentsByLine, canComment, activeBlock]);
+
+  // Get comments for active block
+  const activeComments: Comment[] = [];
+  if (activeBlock != null && data) {
+    // Find the element with this source line to get its range
+    const el = docRef.current?.querySelector(`[data-source-line="${activeBlock}"]`);
+    const lineEnd = parseInt(el?.getAttribute('data-source-line-end') || String(activeBlock), 10);
+    for (let l = activeBlock; l <= lineEnd; l++) {
+      if (commentsByLine[l]) activeComments.push(...commentsByLine[l]);
+    }
+  }
+
+  async function handleAddComment() {
+    if (!commentText.trim() || !activeBlock) return;
+    setSubmitting(true);
+    try {
+      await scopedFetch('/comments', {
+        method: 'POST',
+        body: JSON.stringify({ file, line: activeBlock, text: commentText.trim() }),
+      });
+      setCommentText('');
+      queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
+      toast('Comentario agregado', 'success');
+    } catch {
+      toast('Error al agregar comentario', 'error');
+    }
+    setSubmitting(false);
+  }
+
+  async function handleDeleteComment(id: string) {
+    try {
+      await scopedFetch('/comments/delete', {
+        method: 'POST',
+        body: JSON.stringify({ file, id }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
+      toast('Comentario eliminado', 'success');
+    } catch {
+      toast('Error al eliminar comentario', 'error');
+    }
+  }
 
   async function handleDelete() {
     if (!confirm('Eliminar este documento?')) return;
@@ -101,7 +223,47 @@ export function DocPage() {
   return (
     <div className="container">
       <Toolbar actions={actions} />
-      <div className="doc" dangerouslySetInnerHTML={{ __html: data?.html || '' }} />
+      <div className="doc-with-comments">
+        <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: data?.html || '' }} />
+        {activeBlock != null && (
+          <div className="inline-comment-panel">
+            <div className="inline-comment-header">
+              <span>Comentarios (linea {activeBlock})</span>
+              <button className="inline-comment-close" onClick={() => setActiveBlock(null)}>&times;</button>
+            </div>
+            {activeComments.length === 0 && (
+              <div className="inline-comment-empty">Sin comentarios en este bloque.</div>
+            )}
+            {activeComments.map((c) => (
+              <div key={c.id} className="inline-comment-item">
+                <div className="inline-comment-meta">
+                  <span className="inline-comment-author">{c.author}</span>
+                  <span className="inline-comment-date">{new Date(c.createdAt).toLocaleDateString('es-AR')}</span>
+                  {canWrite && (
+                    <button className="inline-comment-delete" onClick={() => handleDeleteComment(c.id)}>&times;</button>
+                  )}
+                </div>
+                <div className="inline-comment-text">{c.text}</div>
+              </div>
+            ))}
+            {canComment && (
+              <div className="inline-comment-form">
+                <input
+                  type="text"
+                  placeholder="Agregar comentario..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !submitting) handleAddComment(); }}
+                  disabled={submitting}
+                />
+                <button onClick={handleAddComment} disabled={submitting || !commentText.trim()}>
+                  {submitting ? '...' : 'Enviar'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

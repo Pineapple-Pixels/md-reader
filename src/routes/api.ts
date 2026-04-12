@@ -2,7 +2,6 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import { readFile, writeFile, unlink, rm } from 'fs/promises';
 import { dirname } from 'path';
-import { randomUUID } from 'crypto';
 import archiver from 'archiver';
 import { z } from 'zod';
 import { md } from '../lib/config.js';
@@ -21,7 +20,6 @@ import {
   addComment,
   deleteComment,
   deleteAllComments,
-  type Comment,
 } from '../lib/comments.js';
 import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
@@ -135,8 +133,8 @@ router.get('/render', ah(async (req, res) => {
     throw err;
   }
   const html = md.render(content);
-  const comments = await getComments(scope.basePath, file);
-  res.json({ html, commentCount: comments.length, canWrite: scope.canWrite, canComment: scope.canComment });
+  const comments = await getComments(scope.id, file);
+  res.json({ html, comments, commentCount: comments.length, canWrite: scope.canWrite, canComment: scope.canComment });
 }));
 
 // Download doc (file) or project (folder → .zip with all .md files)
@@ -275,7 +273,7 @@ router.delete('/delete', ah(async (req, res) => {
       } catch (err) {
         if (!isEnoent(err)) throw err;
       }
-      await deleteAllComments(scope.basePath, f.name);
+      await deleteAllComments(scope.id, f.name);
     }));
     await rm(filePath, { recursive: true, force: true });
   } else {
@@ -286,7 +284,7 @@ router.delete('/delete', ah(async (req, res) => {
       if (!isEnoent(err)) throw err;
     }
     await unlink(filePath).catch((err: unknown) => { if (!isEnoent(err)) throw err; });
-    await deleteAllComments(scope.basePath, file);
+    await deleteAllComments(scope.id, file);
   }
   invalidateSearchIndex(scope.id);
   res.json({ ok: true });
@@ -350,7 +348,7 @@ router.get('/comments', ah(async (req, res) => {
   if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  res.json(await getComments(scope.basePath, file));
+  res.json(await getComments(scope.id, file));
 }));
 
 router.post('/comments', ah(async (req, res) => {
@@ -364,25 +362,20 @@ router.post('/comments', ah(async (req, res) => {
     const first = parsed.error.issues[0];
     return res.status(400).json({ error: first?.message ?? 'Body invalido' });
   }
-  const { file, text, line, author } = parsed.data;
+  const { file, text, line } = parsed.data;
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const stats = await statOrNull(filePath);
   if (!stats || !stats.isFile()) return res.status(404).json({ error: 'Archivo no encontrado' });
-  // Si el user esta logueado, usamos su username como author autoritativo
-  // (el body.author se ignora para prevenir impersonation).
-  const resolvedAuthor = req.user?.username ?? author;
-  const comment: Comment = {
-    id: randomUUID(),
+  const resolvedAuthor = req.user?.username ?? 'Anonimo';
+  const authorId = req.user?.userId ?? null;
+  const comment = await addComment(scope.id, file, {
+    line: line ?? null,
     text,
     author: resolvedAuthor,
-    createdAt: new Date().toISOString(),
-    // Mantener compat con el formato anterior que usaba `date` en vez de `createdAt`.
-    date: new Date().toISOString(),
-  };
-  if (line !== null) comment.line = line;
-  await addComment(scope.basePath, file, comment);
-  res.json({ ok: true });
+    authorId,
+  });
+  res.json({ ok: true, comment });
 }));
 
 router.post('/comments/delete', ah(async (req, res) => {
@@ -394,7 +387,7 @@ router.post('/comments/delete', ah(async (req, res) => {
   const parsed = CommentDeleteBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y id son requeridos' });
   const { file, id } = parsed.data;
-  await deleteComment(scope.basePath, file, id);
+  await deleteComment(scope.id, file, id);
   res.json({ ok: true });
 }));
 

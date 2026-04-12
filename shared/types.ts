@@ -7,6 +7,15 @@ export interface SearchEntry {
   mtime: string;
 }
 
+export interface Comment {
+  id: string;
+  line: number | null;
+  text: string;
+  author: string;
+  authorId: number | null;
+  createdAt: string;
+}
+
 export interface TeamMembership {
   slug: string;
   name: string;

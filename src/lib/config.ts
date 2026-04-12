@@ -1,5 +1,6 @@
 import { resolve } from 'path';
 import MarkdownIt from 'markdown-it';
+import { sourceLinePlugin } from './md-source-lines.js';
 
 // Raíz única para todos los scopes (multi-user).
 // Layout:
@@ -30,3 +31,4 @@ if (process.env['NODE_ENV'] === 'production') {
 
 // html: false para prevenir XSS via markdown embebido
 export const md = new MarkdownIt({ html: false, linkify: true, typographer: true });
+md.use(sourceLinePlugin);

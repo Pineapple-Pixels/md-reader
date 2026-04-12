@@ -36,8 +36,8 @@ router.get('/render', ah(async (req, res) => {
     throw err;
   }
   const html = md.render(content);
-  const comments = await getComments(PUBLIC_BASE, file);
-  res.json({ html, commentCount: comments.length });
+  const comments = await getComments('public', file);
+  res.json({ html, comments, commentCount: comments.length });
 }));
 
 // Project data (tree + initial page)
@@ -91,7 +91,7 @@ router.get('/pull', ah(async (req, res) => {
 router.get('/comments', ah(async (req, res) => {
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  res.json(await getComments(PUBLIC_BASE, file));
+  res.json(await getComments('public', file));
 }));
 
 // Render project page

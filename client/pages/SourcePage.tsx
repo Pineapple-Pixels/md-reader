@@ -5,14 +5,7 @@ import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
-
-interface Comment {
-  id: string;
-  text: string;
-  line: number | null;
-  author: string;
-  date: string;
-}
+import type { Comment } from '@shared/types';
 
 interface SourceData {
   content: string;
@@ -153,7 +146,7 @@ export function SourcePage() {
                     </button>
                   )}
                   <span className="author">{c.author}</span>{' '}
-                  <span className="date">{new Date(c.date).toLocaleDateString('es-AR')}</span>
+                  <span className="date">{new Date(c.createdAt).toLocaleDateString('es-AR')}</span>
                   <div className="text">{c.text}</div>
                 </div>
               ))}
