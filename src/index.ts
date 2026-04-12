@@ -10,6 +10,7 @@ import { listTeamsForUser } from './lib/teams.js';
 import { seedAdminIfEmpty } from './lib/seed.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
+import adminApiRouter from './routes/admin-api.js';
 
 const app = express();
 
@@ -127,6 +128,9 @@ app.post('/api/auth/logout', (_req, res) => {
 
 // Public API routes (no auth)
 app.use('/api/public', publicApiRouter);
+
+// Admin API routes (auth + admin role)
+app.use('/api/admin', adminApiRouter);
 
 // Private API routes (auth required)
 app.use('/api', apiRouter);
