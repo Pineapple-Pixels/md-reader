@@ -19,7 +19,7 @@ import {
   removeMember,
   isValidSlug,
 } from '../lib/teams.js';
-import type { TeamRole } from '../lib/teams.js';
+
 import { sql } from '../lib/db.js';
 
 const router = Router();
@@ -205,7 +205,7 @@ router.post('/teams/:slug/members', async (req, res, next) => {
       return res.status(400).json({ error: msg });
     }
     const { username, role } = parsed.data;
-    await addMember(slug, username, role as TeamRole | undefined);
+    await addMember(slug, username, role);
     // Invalidar cache del user para que sus teams se refresquen
     const user = await findByUsername(username);
     if (user) invalidateHydrateCache(user.id);

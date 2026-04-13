@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "echo 'TODO: configure eslint'",
+    "lint": "eslint src shared",
     "db:migrate": "tsx --env-file=.env cli/migrate.ts",
     "user:create": "tsx --env-file=.env cli/user.ts create",
     "user:passwd": "tsx --env-file=.env cli/user.ts passwd",

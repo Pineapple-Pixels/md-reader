@@ -24,7 +24,7 @@ import {
 import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, isEnoent, isNotFile, queryString } from '../lib/route-helpers.js';
+import { ah, statOrNull, isEnoent, queryString, readDocFile, NotFileError } from '../lib/route-helpers.js';
 
 const router = Router();
 
@@ -125,11 +125,9 @@ router.get('/render', ah(async (req, res) => {
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'Archivo no encontrado' });
     throw err;
   }
   const html = md.render(content);
@@ -237,11 +235,9 @@ router.get('/pull', ah(async (req, res) => {
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'Archivo no encontrado' });
     throw err;
   }
   res.json({ file, content });
@@ -308,11 +304,9 @@ router.get('/project', ah(async (req, res) => {
   const activeFilePath = resolveDoc(mainPage, scope.basePath);
   if (!activeFilePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(activeFilePath, 'utf-8'); }
+  try { content = await readDocFile(activeFilePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'Pagina no encontrada' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'Pagina no encontrada' });
     throw err;
   }
   const html = md.render(content);
@@ -331,11 +325,9 @@ router.get('/project/render', ah(async (req, res) => {
   const filePath = resolveDoc(page, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'Pagina no encontrada' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'Pagina no encontrada' });
     throw err;
   }
   const rendered = md.render(content);

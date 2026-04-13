@@ -49,3 +49,24 @@ export async function statOrNull(p: string): Promise<Stats | null> {
 export function queryString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
+
+/**
+ * Read a file from disk, returning its contents. Throws a `NotFileError` with
+ * a 404 status if the file doesn't exist or is a directory, so routes can
+ * handle it uniformly instead of duplicating the try/catch + isNotFile pattern.
+ */
+export class NotFileError extends Error {
+  constructor(message = 'Archivo no encontrado') {
+    super(message);
+  }
+}
+
+export async function readDocFile(filePath: string): Promise<string> {
+  const { readFile } = await import('fs/promises');
+  try {
+    return await readFile(filePath, 'utf-8');
+  } catch (err) {
+    if (isNotFile(err)) throw new NotFileError();
+    throw err;
+  }
+}

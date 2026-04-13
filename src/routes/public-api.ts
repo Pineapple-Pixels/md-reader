@@ -1,11 +1,10 @@
 import { Router } from 'express';
-import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { STORAGE_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles } from '../lib/storage.js';
 import { getComments } from '../lib/comments.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, isNotFile, queryString } from '../lib/route-helpers.js';
+import { ah, statOrNull, queryString, readDocFile, NotFileError } from '../lib/route-helpers.js';
 
 // API publica (sin auth). Sirve exclusivamente el scope `public`, es decir
 // `storage/public/`. No hay `?scope=` aca — el scope esta hardcoded porque
@@ -28,11 +27,9 @@ router.get('/render', ah(async (req, res) => {
   const filePath = resolveDoc(file, PUBLIC_BASE);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'No encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
   const html = md.render(content);
@@ -56,11 +53,9 @@ router.get('/project', ah(async (req, res) => {
   const activeFilePath = resolveDoc(mainPage, PUBLIC_BASE);
   if (!activeFilePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(activeFilePath, 'utf-8'); }
+  try { content = await readDocFile(activeFilePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'No encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
   const html = md.render(content);
@@ -76,11 +71,9 @@ router.get('/pull', ah(async (req, res) => {
   const filePath = resolveDoc(file, PUBLIC_BASE);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'No encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
   res.json({ file, content });
@@ -102,11 +95,9 @@ router.get('/project/render', ah(async (req, res) => {
   const filePath = resolveDoc(page, PUBLIC_BASE);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   let content: string;
-  try { content = await readFile(filePath, 'utf-8'); }
+  try { content = await readDocFile(filePath); }
   catch (err) {
-    if (isNotFile(err)) {
-      return res.status(404).json({ error: 'No encontrado' });
-    }
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
   const rendered = md.render(content);
