@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminFetch, type PanelProps } from './helpers';
+import { adminFetch, type PanelProps, type PaginatedResponse } from './helpers';
 import type { AdminMember } from '@shared/types';
 
 interface MembersPanelProps extends PanelProps {
@@ -9,10 +9,11 @@ interface MembersPanelProps extends PanelProps {
 }
 
 export function MembersPanel({ slug, toast, queryClient, onClose }: MembersPanelProps) {
-  const { data: members = [], isLoading } = useQuery<AdminMember[]>({
+  const { data: membersResponse, isLoading } = useQuery<PaginatedResponse<AdminMember>>({
     queryKey: ['admin', 'members', slug],
     queryFn: () => adminFetch(`/teams/${encodeURIComponent(slug)}/members`),
   });
+  const members = membersResponse?.data ?? [];
 
   const [addUsername, setAddUsername] = useState('');
   const [addRole, setAddRole] = useState<'member' | 'admin'>('member');

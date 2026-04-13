@@ -7,11 +7,6 @@ import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 import type { Comment } from '@shared/types';
 
-interface SourceData {
-  content: string;
-  comments: Comment[];
-}
-
 export function SourcePage() {
   const location = useLocation();
   const { toast } = useToast();
@@ -28,14 +23,14 @@ export function SourcePage() {
   const canWrite = scope.kind !== 'public';
   const canComment = isAuthenticated;
 
-  const { data, isLoading } = useQuery<SourceData>({
+  const { data, isLoading } = useQuery<{ content: string; comments: Comment[] }>({
     queryKey: ['source', scopeId, file],
     queryFn: async () => {
       const [pullRes, commentsRes] = await Promise.all([
         scopedFetch<{ content: string }>(`/pull?file=${encodeURIComponent(file)}`),
-        scopedFetch<Comment[]>(`/comments?file=${encodeURIComponent(file)}`),
+        scopedFetch<{ data: Comment[] }>(`/comments?file=${encodeURIComponent(file)}`),
       ]);
-      return { content: pullRes.content, comments: commentsRes };
+      return { content: pullRes.content, comments: commentsRes.data };
     },
   });
 

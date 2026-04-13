@@ -108,11 +108,16 @@ export async function deleteUser(username: string): Promise<boolean> {
   return result.count > 0;
 }
 
-export async function listUsers(): Promise<User[]> {
+export async function listUsers(opts?: { limit?: number; offset?: number }): Promise<{ data: User[]; total: number }> {
+  const countRows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM users`;
+  const total = Number(countRows[0]?.count ?? '0');
+  const limit = opts?.limit ?? total;
+  const offset = opts?.offset ?? 0;
   const rows = await sql<UserRow[]>`
     SELECT id, username, password_hash, display_name, role, created_at
     FROM users
     ORDER BY id ASC
+    LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows.map(toUser);
+  return { data: rows.map(toUser), total };
 }

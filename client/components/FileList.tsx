@@ -1,9 +1,5 @@
 import { Link } from 'react-router-dom';
-
-interface FileEntry {
-  name: string;
-  modified: string;
-}
+import type { FileEntry } from '@shared/types';
 
 interface FileAction {
   label: string | ((name: string) => string);

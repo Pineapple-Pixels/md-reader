@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { getFiles } from './storage.js';
+import { logger } from './logger.js';
 
 export type SearchIndexEntry = {
   file: string;
@@ -77,7 +78,7 @@ export async function getSearchIndex(
     if (result.status === 'fulfilled') {
       entries.push(result.value);
     } else {
-      console.warn('[search-index] skip:', result.reason);
+      logger.warn('search-index', 'skip file', { reason: String(result.reason) });
     }
   }
 

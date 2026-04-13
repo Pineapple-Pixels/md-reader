@@ -4,7 +4,7 @@ import { STORAGE_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles } from '../lib/storage.js';
 import { getComments } from '../lib/comments.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, queryString, readDocFile, NotFileError } from '../lib/route-helpers.js';
+import { ah, statOrNull, queryString, readDocFile, NotFileError, parsePagination } from '../lib/route-helpers.js';
 
 // API publica (sin auth). Sirve exclusivamente el scope `public`, es decir
 // `storage/public/`. No hay `?scope=` aca — el scope esta hardcoded porque
@@ -33,8 +33,8 @@ router.get('/render', ah(async (req, res) => {
     throw err;
   }
   const html = md.render(content);
-  const comments = await getComments('public', file);
-  res.json({ html, comments, commentCount: comments.length });
+  const { data: comments, total: commentCount } = await getComments('public', file);
+  res.json({ html, comments, commentCount });
 }));
 
 // Project data (tree + initial page)
@@ -84,7 +84,9 @@ router.get('/pull', ah(async (req, res) => {
 router.get('/comments', ah(async (req, res) => {
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  res.json(await getComments('public', file));
+  const pg = parsePagination(req.query as Record<string, unknown>);
+  const { data, total } = await getComments('public', file, pg);
+  res.json({ data, total, limit: pg.limit ?? total, offset: pg.offset ?? 0 });
 }));
 
 // Render project page

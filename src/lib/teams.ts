@@ -70,13 +70,18 @@ export async function deleteTeam(slug: string): Promise<boolean> {
   return result.count > 0;
 }
 
-export async function listTeams(): Promise<Team[]> {
+export async function listTeams(opts?: { limit?: number; offset?: number }): Promise<{ data: Team[]; total: number }> {
+  const countRows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM teams`;
+  const total = Number(countRows[0]?.count ?? '0');
+  const limit = opts?.limit ?? total;
+  const offset = opts?.offset ?? 0;
   const rows = await sql<TeamRow[]>`
     SELECT id, slug, name, created_at
     FROM teams
     ORDER BY slug ASC
+    LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows.map(toTeam);
+  return { data: rows.map(toTeam), total };
 }
 
 // ----- memberships -----
@@ -120,7 +125,16 @@ export async function listTeamsForUser(userId: number): Promise<TeamMembership[]
   return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role }));
 }
 
-export async function listMembers(teamSlug: string): Promise<{ username: string; role: TeamRole }[]> {
+export async function listMembers(teamSlug: string, opts?: { limit?: number; offset?: number }): Promise<{ data: { username: string; role: TeamRole }[]; total: number }> {
+  const countRows = await sql<{ count: string }[]>`
+    SELECT COUNT(*)::text AS count
+    FROM team_members tm
+    JOIN teams t ON t.id = tm.team_id
+    WHERE LOWER(t.slug) = LOWER(${teamSlug})
+  `;
+  const total = Number(countRows[0]?.count ?? '0');
+  const limit = opts?.limit ?? total;
+  const offset = opts?.offset ?? 0;
   const rows = await sql<{ username: string; role: TeamRole }[]>`
     SELECT u.username, tm.role
     FROM team_members tm
@@ -128,6 +142,7 @@ export async function listMembers(teamSlug: string): Promise<{ username: string;
     JOIN teams t ON t.id = tm.team_id
     WHERE LOWER(t.slug) = LOWER(${teamSlug})
     ORDER BY u.username ASC
+    LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows.map((r) => ({ username: r.username, role: r.role }));
+  return { data: rows.map((r) => ({ username: r.username, role: r.role })), total };
 }

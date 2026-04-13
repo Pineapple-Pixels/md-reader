@@ -83,7 +83,7 @@ async function cmdDelete(args: Parsed): Promise<void> {
 }
 
 async function cmdList(): Promise<void> {
-  const users = await listUsers();
+  const { data: users } = await listUsers();
   if (users.length === 0) {
     console.log('[user] no hay users');
     return;

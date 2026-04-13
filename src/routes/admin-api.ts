@@ -21,6 +21,7 @@ import {
 } from '../lib/teams.js';
 
 import { sql } from '../lib/db.js';
+import { parsePagination } from '../lib/route-helpers.js';
 
 const router = Router();
 
@@ -61,16 +62,22 @@ const MemberBody = z.object({
 
 // ===== USERS =====
 
-router.get('/users', async (_req, res, next) => {
+router.get('/users', async (req, res, next) => {
   try {
-    const users = await listUsers();
-    res.json(users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      displayName: u.displayName,
-      role: u.role,
-      createdAt: u.createdAt.toISOString(),
-    })));
+    const pg = parsePagination(req.query as Record<string, unknown>);
+    const { data, total } = await listUsers(pg);
+    res.json({
+      data: data.map((u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.displayName,
+        role: u.role,
+        createdAt: u.createdAt.toISOString(),
+      })),
+      total,
+      limit: pg.limit ?? total,
+      offset: pg.offset ?? 0,
+    });
   } catch (err) { next(err); }
 });
 
@@ -139,15 +146,21 @@ router.delete('/users/:username', async (req, res, next) => {
 
 // ===== TEAMS =====
 
-router.get('/teams', async (_req, res, next) => {
+router.get('/teams', async (req, res, next) => {
   try {
-    const teams = await listTeams();
-    res.json(teams.map((t) => ({
-      id: t.id,
-      slug: t.slug,
-      name: t.name,
-      createdAt: t.createdAt.toISOString(),
-    })));
+    const pg = parsePagination(req.query as Record<string, unknown>);
+    const { data, total } = await listTeams(pg);
+    res.json({
+      data: data.map((t) => ({
+        id: t.id,
+        slug: t.slug,
+        name: t.name,
+        createdAt: t.createdAt.toISOString(),
+      })),
+      total,
+      limit: pg.limit ?? total,
+      offset: pg.offset ?? 0,
+    });
   } catch (err) { next(err); }
 });
 
@@ -191,8 +204,9 @@ router.delete('/teams/:slug', async (req, res, next) => {
 router.get('/teams/:slug/members', async (req, res, next) => {
   try {
     const { slug } = req.params;
-    const members = await listMembers(slug);
-    res.json(members);
+    const pg = parsePagination(req.query as Record<string, unknown>);
+    const { data, total } = await listMembers(slug, pg);
+    res.json({ data, total, limit: pg.limit ?? total, offset: pg.offset ?? 0 });
   } catch (err) { next(err); }
 });
 

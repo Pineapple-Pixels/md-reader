@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isEnoent, isNotFile, queryString } from '../src/lib/route-helpers.js';
+import { isEnoent, isNotFile, queryString, parsePagination } from '../src/lib/route-helpers.js';
 
 describe('isEnoent', () => {
   it('returns true for ENOENT errors', () => {
@@ -52,5 +52,35 @@ describe('queryString', () => {
     expect(queryString(123)).toBeNull();
     expect(queryString(['a', 'b'])).toBeNull();
     expect(queryString({ key: 'val' })).toBeNull();
+  });
+});
+
+describe('parsePagination', () => {
+  it('returns empty object when no params', () => {
+    expect(parsePagination({})).toEqual({});
+  });
+
+  it('parses valid limit and offset', () => {
+    expect(parsePagination({ limit: '10', offset: '20' })).toEqual({ limit: 10, offset: 20 });
+  });
+
+  it('ignores limit over 200', () => {
+    expect(parsePagination({ limit: '999' })).toEqual({});
+  });
+
+  it('ignores non-integer limit', () => {
+    expect(parsePagination({ limit: '3.5' })).toEqual({});
+  });
+
+  it('ignores negative offset', () => {
+    expect(parsePagination({ offset: '-1' })).toEqual({});
+  });
+
+  it('accepts offset 0', () => {
+    expect(parsePagination({ offset: '0' })).toEqual({ offset: 0 });
+  });
+
+  it('ignores non-string values', () => {
+    expect(parsePagination({ limit: 10 as unknown, offset: null as unknown })).toEqual({});
   });
 });

@@ -24,7 +24,8 @@ import {
 import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, isEnoent, queryString, readDocFile, NotFileError } from '../lib/route-helpers.js';
+import { ah, statOrNull, isEnoent, queryString, readDocFile, NotFileError, parsePagination } from '../lib/route-helpers.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 
@@ -131,8 +132,8 @@ router.get('/render', ah(async (req, res) => {
     throw err;
   }
   const html = md.render(content);
-  const comments = await getComments(scope.id, file);
-  res.json({ html, comments, commentCount: comments.length, canWrite: scope.canWrite, canComment: scope.canComment });
+  const { data: comments, total: commentCount } = await getComments(scope.id, file);
+  res.json({ html, comments, commentCount, canWrite: scope.canWrite, canComment: scope.canComment });
 }));
 
 // Download doc (file) or project (folder → .zip with all .md files)
@@ -158,7 +159,7 @@ router.get('/download', ah(async (req, res) => {
     // destroy the socket so the client sees a broken download instead of a
     // silently truncated zip, and log for diagnosis.
     archive.on('error', (err) => {
-      console.error('[download] archive error:', err);
+      logger.error('download', 'archive error', { err: String(err) });
       res.destroy(err);
     });
     archive.pipe(res);
@@ -340,7 +341,9 @@ router.get('/comments', ah(async (req, res) => {
   if (!scope) return;
   const file = queryString(req.query['file']);
   if (!file) return res.status(400).json({ error: 'file es requerido' });
-  res.json(await getComments(scope.id, file));
+  const pg = parsePagination(req.query as Record<string, unknown>);
+  const { data, total } = await getComments(scope.id, file, pg);
+  res.json({ data, total, limit: pg.limit ?? total, offset: pg.offset ?? 0 });
 }));
 
 router.post('/comments', ah(async (req, res) => {

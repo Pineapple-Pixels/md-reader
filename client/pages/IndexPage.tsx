@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { FileList } from '../components/FileList';
+import type { FileEntry } from '@shared/types';
 
 // Index unificado para cualquier scope. La diferencia entre me/team/public es
 // solo si se muestran controles de escritura — eso lo decidimos localmente
@@ -24,7 +25,7 @@ export function IndexPage() {
 
   const { data: files = [] } = useQuery({
     queryKey: ['docs', scopeId],
-    queryFn: () => scopedFetch<{ name: string; modified: string }[]>('/docs'),
+    queryFn: () => scopedFetch<FileEntry[]>('/docs'),
   });
 
   const refresh = () => {

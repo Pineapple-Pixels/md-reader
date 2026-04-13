@@ -51,6 +51,25 @@ export function queryString(value: unknown): string | null {
 }
 
 /**
+ * Parse optional limit/offset query params for pagination.
+ * Returns undefined values when not provided (caller uses defaults).
+ */
+export function parsePagination(query: Record<string, unknown>): { limit?: number; offset?: number } {
+  const result: { limit?: number; offset?: number } = {};
+  const rawLimit = queryString(query['limit']);
+  const rawOffset = queryString(query['offset']);
+  if (rawLimit) {
+    const n = Number(rawLimit);
+    if (Number.isInteger(n) && n >= 1 && n <= 200) result.limit = n;
+  }
+  if (rawOffset) {
+    const n = Number(rawOffset);
+    if (Number.isInteger(n) && n >= 0) result.offset = n;
+  }
+  return result;
+}
+
+/**
  * Read a file from disk, returning its contents. Throws a `NotFileError` with
  * a 404 status if the file doesn't exist or is a directory, so routes can
  * handle it uniformly instead of duplicating the try/catch + isNotFile pattern.

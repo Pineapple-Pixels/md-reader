@@ -1,6 +1,7 @@
 import { resolve } from 'path';
 import MarkdownIt from 'markdown-it';
 import { sourceLinePlugin } from './md-source-lines.js';
+import { logger } from './logger.js';
 
 // Raíz única para todos los scopes (multi-user).
 // Layout:
@@ -17,7 +18,7 @@ export const DATABASE_URL = process.env['DATABASE_URL'] || '';
 if (!DATABASE_URL) {
   const msg = 'DATABASE_URL no esta configurado. Requerido para login multi-usuario.';
   if (process.env['NODE_ENV'] === 'production') throw new Error(msg);
-  console.warn(`[config] ${msg}`);
+  logger.warn('config', msg);
 }
 
 // Fail-fast en produccion si no hay un JWT_SECRET seguro configurado
@@ -26,7 +27,7 @@ if (process.env['NODE_ENV'] === 'production') {
     throw new Error('JWT_SECRET debe estar configurado con un valor seguro en produccion');
   }
 } else if (!JWT_SECRET || JWT_SECRET === 'change-me-in-production') {
-  console.warn('[config] JWT_SECRET no esta configurado o usa el valor por defecto. Configuralo antes de ir a produccion.');
+  logger.warn('config', 'JWT_SECRET no esta configurado o usa el valor por defecto. Configuralo antes de ir a produccion.');
 }
 
 // html: false para prevenir XSS via markdown embebido

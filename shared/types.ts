@@ -1,5 +1,12 @@
 /** Shared types between server and client */
 
+export interface Paginated<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SearchEntry {
   file: string;
   title: string;

@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminFetch, type PanelProps } from './helpers';
+import { adminFetch, type PanelProps, type PaginatedResponse } from './helpers';
 import type { AdminUser } from '@shared/types';
 
 export function UsersPanel({ toast, queryClient }: PanelProps) {
-  const { data: users = [], isLoading } = useQuery<AdminUser[]>({
+  const { data: usersResponse, isLoading } = useQuery<PaginatedResponse<AdminUser>>({
     queryKey: ['admin', 'users'],
     queryFn: () => adminFetch('/users'),
   });
+  const users = usersResponse?.data ?? [];
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);

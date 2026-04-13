@@ -75,7 +75,7 @@ async function cmdDelete(args: Parsed): Promise<void> {
 }
 
 async function cmdList(): Promise<void> {
-  const teams = await listTeams();
+  const { data: teams } = await listTeams();
   if (teams.length === 0) {
     console.log('[team] no hay teams');
     return;
@@ -112,7 +112,7 @@ async function cmdRemoveUser(args: Parsed): Promise<void> {
 async function cmdMembers(args: Parsed): Promise<void> {
   const [slug] = args.positional;
   if (!slug) usage();
-  const members = await listMembers(slug);
+  const { data: members } = await listMembers(slug);
   if (members.length === 0) {
     console.log(`[team] ${slug} sin miembros`);
     return;

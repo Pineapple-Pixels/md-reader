@@ -30,14 +30,22 @@ function rowToComment(row: CommentRow): Comment {
   };
 }
 
-export async function getComments(scopeId: string, file: string): Promise<Comment[]> {
+export async function getComments(scopeId: string, file: string, opts?: { limit?: number; offset?: number }): Promise<{ data: Comment[]; total: number }> {
+  const countRows = await sql<{ count: string }[]>`
+    SELECT COUNT(*)::text AS count FROM comments
+    WHERE scope_id = ${scopeId} AND file = ${file}
+  `;
+  const total = Number(countRows[0]?.count ?? '0');
+  const limit = opts?.limit ?? total;
+  const offset = opts?.offset ?? 0;
   const rows = await sql<CommentRow[]>`
     SELECT id, line, text, author, author_id, created_at
     FROM comments
     WHERE scope_id = ${scopeId} AND file = ${file}
     ORDER BY created_at ASC
+    LIMIT ${limit} OFFSET ${offset}
   `;
-  return rows.map(rowToComment);
+  return { data: rows.map(rowToComment), total };
 }
 
 export async function getCommentCount(scopeId: string, file: string): Promise<number> {

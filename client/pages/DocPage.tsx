@@ -5,17 +5,9 @@ import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
-import type { Comment } from '@shared/types';
+import type { RenderResponse, Comment } from '@shared/types';
 
 declare const hljs: { highlightAll: () => void };
-
-interface DocData {
-  html: string;
-  comments: Comment[];
-  commentCount: number;
-  canWrite?: boolean;
-  canComment?: boolean;
-}
 
 export function DocPage() {
   const location = useLocation();
@@ -30,7 +22,7 @@ export function DocPage() {
   const docPrefix = `${urlPrefix}/doc/`;
   const file = decodeURIComponent(location.pathname.replace(docPrefix, ''));
 
-  const { data, isLoading, error } = useQuery<DocData>({
+  const { data, isLoading, error } = useQuery<RenderResponse>({
     queryKey: ['doc', scopeId, file],
     queryFn: () => scopedFetch(`/render?file=${encodeURIComponent(file)}`),
   });
