@@ -28,3 +28,42 @@ export interface AuthResponse {
   role?: 'admin' | 'member';
   teams?: TeamMembership[];
 }
+
+export interface RenderResponse {
+  html: string;
+  comments: Comment[];
+  commentCount: number;
+  canWrite?: boolean;
+  canComment?: boolean;
+}
+
+export interface PullResponse {
+  file: string;
+  content: string;
+}
+
+export interface FileEntry {
+  name: string;
+  modified: string;
+}
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  displayName: string | null;
+  role: 'admin' | 'member';
+  createdAt: string;
+}
+
+export interface AdminTeam {
+  id: number;
+  slug: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface AdminMember {
+  username: string;
+  displayName: string | null;
+  role: 'admin' | 'member';
+}

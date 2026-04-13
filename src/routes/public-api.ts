@@ -5,7 +5,7 @@ import { STORAGE_DIR, md } from '../lib/config.js';
 import { resolveDoc, getFiles } from '../lib/storage.js';
 import { getComments } from '../lib/comments.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, isEnoent, queryString } from '../lib/route-helpers.js';
+import { ah, statOrNull, isNotFile, queryString } from '../lib/route-helpers.js';
 
 // API publica (sin auth). Sirve exclusivamente el scope `public`, es decir
 // `storage/public/`. No hay `?scope=` aca — el scope esta hardcoded porque
@@ -30,7 +30,7 @@ router.get('/render', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'No encontrado' });
     }
     throw err;
@@ -58,7 +58,7 @@ router.get('/project', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(activeFilePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'No encontrado' });
     }
     throw err;
@@ -78,7 +78,7 @@ router.get('/pull', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'No encontrado' });
     }
     throw err;
@@ -104,7 +104,7 @@ router.get('/project/render', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'No encontrado' });
     }
     throw err;

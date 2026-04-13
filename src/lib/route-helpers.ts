@@ -26,6 +26,11 @@ export function isEnoent(err: unknown): boolean {
   return isErrnoException(err) && err.code === 'ENOENT';
 }
 
+/** Returns true if the error is ENOENT or EISDIR (file not found or is a directory). */
+export function isNotFile(err: unknown): boolean {
+  return isErrnoException(err) && (err.code === 'ENOENT' || err.code === 'EISDIR');
+}
+
 /** Treat ENOENT as "not found", rethrow anything else. */
 export async function statOrNull(p: string): Promise<Stats | null> {
   try {

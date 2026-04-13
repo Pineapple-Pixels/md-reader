@@ -24,7 +24,7 @@ import {
 import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
 import { buildTree, findMainPage, flattenTree } from '../lib/tree.js';
-import { ah, statOrNull, isEnoent, queryString } from '../lib/route-helpers.js';
+import { ah, statOrNull, isEnoent, isNotFile, queryString } from '../lib/route-helpers.js';
 
 const router = Router();
 
@@ -127,7 +127,7 @@ router.get('/render', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
     throw err;
@@ -239,7 +239,7 @@ router.get('/pull', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
     throw err;
@@ -310,7 +310,7 @@ router.get('/project', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(activeFilePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'Pagina no encontrada' });
     }
     throw err;
@@ -333,7 +333,7 @@ router.get('/project/render', ah(async (req, res) => {
   let content: string;
   try { content = await readFile(filePath, 'utf-8'); }
   catch (err) {
-    if (isEnoent(err) || (err as NodeJS.ErrnoException).code === 'EISDIR') {
+    if (isNotFile(err)) {
       return res.status(404).json({ error: 'Pagina no encontrada' });
     }
     throw err;

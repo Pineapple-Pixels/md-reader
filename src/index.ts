@@ -47,13 +47,29 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Rate limit para login
+// Rate limiters
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Demasiados intentos, intenta mas tarde',
+});
+
+const commentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Demasiados comentarios, intenta mas tarde',
+});
+
+const publicApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Demasiadas solicitudes, intenta mas tarde',
 });
 
 // Health check
@@ -126,8 +142,11 @@ app.post('/api/auth/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
-// Public API routes (no auth)
-app.use('/api/public', publicApiRouter);
+// Rate limit comment creation (applies before routers)
+app.post('/api/comments', commentLimiter);
+
+// Public API routes (no auth, rate limited)
+app.use('/api/public', publicApiLimiter, publicApiRouter);
 
 // Admin API routes (auth + admin role)
 app.use('/api/admin', adminApiRouter);
