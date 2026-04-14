@@ -3,6 +3,35 @@ import { useQuery } from '@tanstack/react-query';
 import { adminFetch, type PanelProps, type PaginatedResponse } from './helpers';
 import type { AdminUser } from '@shared/types';
 
+function PasswordField({ value, onChange, required, minLength }: {
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  minLength?: number;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="password-field">
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        minLength={minLength}
+      />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? 'Ocultar password' : 'Mostrar password'}
+        tabIndex={-1}
+      >
+        {show ? '\uD83D\uDE48' : '\uD83D\uDC41'}
+      </button>
+    </div>
+  );
+}
+
 export function UsersPanel({ toast, queryClient }: PanelProps) {
   const { data: usersResponse, isLoading } = useQuery<PaginatedResponse<AdminUser>>({
     queryKey: ['admin', 'users'],
@@ -110,7 +139,7 @@ function CreateUserForm({ onCreated, onError }: { onCreated: () => void; onError
     <form className="admin-form" onSubmit={handleSubmit}>
       <div className="admin-form-row">
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label>
-        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={4} /></label>
+        <label>Password<PasswordField value={password} onChange={setPassword} required minLength={4} /></label>
         <label>Nombre (opcional)<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
         <label>Rol
           <select value={role} onChange={(e) => setRole(e.target.value as 'member' | 'admin')}>
@@ -167,7 +196,7 @@ function EditUserForm({ username, user, onSaved, onError, onCancel }: {
           </select>
         </label>
         <label>Nombre<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
-        <label>Nueva password (dejar vacio para no cambiar)<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={4} /></label>
+        <label>Nueva password (dejar vacio para no cambiar)<PasswordField value={password} onChange={setPassword} minLength={4} /></label>
         <button type="submit" className="admin-btn primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
         <button type="button" className="admin-btn" onClick={onCancel}>Cancelar</button>
       </div>

@@ -268,6 +268,10 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 .admin-form-row label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 .admin-form-row input, .admin-form-row select { padding: 8px 10px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 13px; background: var(--bg-input); color: var(--text); min-width: 140px; }
 .admin-form-row input:focus, .admin-form-row select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+.password-field { position: relative; display: flex; align-items: center; }
+.password-field input { flex: 1; padding-right: 34px; }
+.password-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; padding: 2px 4px; font-size: 14px; line-height: 1; color: var(--text-secondary); }
+.password-toggle:hover { color: var(--text); }
 .admin-select-inline { padding: 4px 8px; border: 1px solid var(--border-input); border-radius: 4px; font-size: 12px; background: var(--bg-input); color: var(--text); cursor: pointer; }
 .admin-members-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 16px; }
 .admin-members-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
