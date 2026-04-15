@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
 import { listTeamsForUser } from './lib/teams.js';
 import { seedAdminIfEmpty } from './lib/seed.js';
+import { runMigrations } from './lib/migrate.js';
 import { logger } from './lib/logger.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
@@ -176,11 +177,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = Number(process.env['PORT']) || 3500;
 
-// Seed del admin desde env si la DB esta vacia, despues arranca el server.
-seedAdminIfEmpty()
+// Migraciones → seed admin → arrancar server.
+runMigrations()
+  .catch((err) => {
+    logger.error('migrate', 'error durante migraciones', { err: String(err) });
+  })
+  .then(() => seedAdminIfEmpty())
   .catch((err) => {
     logger.error('seed', 'error durante el seed inicial', { err: String(err) });
-    // No abortamos — el server puede arrancar sin admin y los users se crean via CLI.
   })
   .finally(() => {
     app.listen(PORT, () => logger.info('server', `Docs server en http://localhost:${PORT}/`));
