@@ -186,16 +186,54 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 .search-footer kbd { background: var(--bg-code); padding: 1px 5px; border-radius: 3px; font-size: 11px; border: 1px solid var(--border); font-family: inherit; }
 
 /* === Doc inline comments === */
+/* Los botones de comentario viven DENTRO del bloque (top-right). Antes los
+   teniamos con right: -32px (afuera) y en pantallas angostas caian fuera
+   del viewport y eran imposibles de clickear. */
 .doc-with-comments { position: relative; }
 .has-inline-comments { background: var(--warning-bg); border-radius: 4px; transition: background 0.15s; }
-.comment-active-block { background: var(--accent-bg); outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.commentable-block { cursor: pointer; }
-.commentable-block:hover { background: var(--bg-hover); border-radius: 4px; }
-.doc-comment-indicator { position: absolute; right: -32px; top: 2px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: white; font-size: 11px; font-weight: 700; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.1s; z-index: 1; }
-.doc-comment-indicator:hover { transform: scale(1.15); }
-.doc-comment-add { position: absolute; right: -32px; top: 2px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg-card); border: 2px solid var(--border); color: var(--text-muted); font-size: 16px; font-weight: 400; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; z-index: 1; }
-.commentable-block:hover .doc-comment-add { display: flex; }
-.doc-comment-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.comment-active-block { background: var(--accent-bg) !important; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.commentable-block { cursor: pointer; padding-right: 40px; border-radius: 4px; transition: background 0.15s; }
+.commentable-block:hover { background: var(--bg-hover); }
+
+.doc-comment-indicator,
+.doc-comment-add {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 13px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  z-index: 3;
+  padding: 0 8px;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  transition: transform 0.1s, box-shadow 0.1s, background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.doc-comment-indicator { background: var(--accent); color: white; font-size: 12px; }
+.doc-comment-indicator:hover { transform: scale(1.08); box-shadow: 0 2px 6px rgba(0,0,0,0.18); }
+
+.doc-comment-add {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 18px;
+  opacity: 0;
+  pointer-events: none;
+}
+.commentable-block:hover .doc-comment-add,
+.doc-comment-add:focus-visible { opacity: 1; pointer-events: auto; }
+.doc-comment-add:hover { background: var(--accent); border-color: var(--accent); color: white; transform: scale(1.08); }
+
+/* En bloques <pre> el copy-btn ya ocupa el top-right, corremos el boton. */
+pre.commentable-block .doc-comment-add,
+pre.commentable-block .doc-comment-indicator { right: 60px; top: 6px; }
 
 .inline-comment-panel { position: fixed; top: 80px; right: 20px; width: 340px; max-height: calc(100vh - 120px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); overflow-y: auto; z-index: 100; }
 .inline-comment-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
@@ -218,7 +256,8 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); }
 .topbar-left { position: relative; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
-.topbar-user { font-size: 13px; color: var(--text-muted); }
+.topbar-user { font-size: 13px; color: var(--text-muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; transition: all 0.15s; }
+.topbar-user:hover { background: var(--bg-hover); color: var(--text); }
 .topbar-admin { font-size: 13px; padding: 4px 10px; border-radius: 6px; text-decoration: none; color: var(--accent); border: 1px solid var(--accent-light); background: var(--accent-bg); transition: all 0.15s; }
 .topbar-admin:hover { background: var(--accent); color: white; }
 .topbar-logout, .topbar-login { font-size: 13px; padding: 4px 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-input); background: var(--bg-card); color: var(--text); text-decoration: none; transition: all 0.15s; }
@@ -279,6 +318,19 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 .admin-add-member { display: flex; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
 .admin-add-member input { padding: 6px 10px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 13px; background: var(--bg-input); color: var(--text); flex: 1; }
 .admin-add-member select { padding: 6px 8px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 13px; background: var(--bg-input); color: var(--text); }
+
+/* === Profile page === */
+.profile-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+.profile-section-title { font-size: 1.05em; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border-light); }
+.profile-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; }
+.profile-field input { padding: 8px 10px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 14px; background: var(--bg-input); color: var(--text); width: 100%; }
+.profile-field input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+.profile-field .password-field { width: 100%; }
+.profile-label { font-weight: 500; color: var(--text-secondary); font-size: 13px; }
+.profile-field-readonly { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 10px; }
+.profile-field-readonly > div { display: flex; flex-direction: column; gap: 4px; }
+.profile-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.profile-actions { display: flex; gap: 10px; margin-top: 6px; }
 
 /* === Responsive === */
 @media (max-width: 768px) {

@@ -5,6 +5,7 @@ import type { AuthResponse, TeamMembership } from '@shared/types';
 interface AuthState {
   isAuthenticated: boolean;
   user: string | null;
+  displayName: string | null;
   role: 'admin' | 'member' | null;
   teams: TeamMembership[];
   isLoading: boolean;
@@ -22,6 +23,7 @@ export function useAuth(): AuthState {
   return {
     isAuthenticated: data?.authenticated ?? false,
     user: data?.user ?? null,
+    displayName: data?.displayName ?? null,
     role: data?.role ?? null,
     teams: data?.teams ?? [],
     isLoading,

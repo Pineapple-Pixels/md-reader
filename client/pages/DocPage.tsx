@@ -16,7 +16,7 @@ export function DocPage() {
   const queryClient = useQueryClient();
   const { scope, urlPrefix, id: scopeId } = useScope();
   const scopedFetch = useScopedFetch();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, role } = useAuth();
   const docRef = useRef<HTMLDivElement>(null);
 
   const docPrefix = `${urlPrefix}/doc/`;
@@ -132,6 +132,27 @@ export function DocPage() {
     });
   }, [data, commentsByLine, canComment, activeBlock]);
 
+  // Delegacion de click: tocar cualquier parte de un bloque comentable abre el
+  // panel. Ignoramos clicks en elementos interactivos (links, botones inyectados,
+  // inputs) para no romper la navegacion. Los handlers de los botones individuales
+  // hacen stopPropagation asi que no corre dos veces.
+  useEffect(() => {
+    if (!canComment || !docRef.current) return;
+    const container = docRef.current;
+    function handler(e: Event) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('a, button, input, textarea, select, label')) return;
+      const block = target.closest<HTMLElement>('[data-source-line]');
+      if (!block || !block.classList.contains('commentable-block')) return;
+      const line = parseInt(block.getAttribute('data-source-line') || '0', 10);
+      if (!line) return;
+      setActiveBlock((prev) => (prev === line ? null : line));
+    }
+    container.addEventListener('click', handler);
+    return () => container.removeEventListener('click', handler);
+  }, [canComment, data?.html]);
+
   // Get comments for active block
   const activeComments: Comment[] = [];
   if (activeBlock != null && data) {
@@ -173,6 +194,26 @@ export function DocPage() {
     }
   }
 
+  async function handlePublish(overwrite = false) {
+    if (!overwrite && !confirm(`Publicar "${file}" en Publicos?`)) return;
+    try {
+      await scopedFetch('/publish', {
+        method: 'POST',
+        body: JSON.stringify({ file, overwrite }),
+      });
+      toast(overwrite ? 'Doc republicado en Publicos' : 'Publicado en Publicos', 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('409')) {
+        if (confirm('Ya existe un doc con ese nombre en Publicos. Sobrescribir?')) {
+          await handlePublish(true);
+        }
+        return;
+      }
+      toast('Error al publicar', 'error');
+    }
+  }
+
   async function handleDelete() {
     if (!confirm('Eliminar este documento?')) return;
     try {
@@ -208,6 +249,9 @@ export function DocPage() {
       scope.kind === 'team' ? `team:${scope.slug}` :
       'public';
     actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true });
+    if (role === 'admin' && scope.kind !== 'public') {
+      actions.push({ label: 'Publicar', onClick: () => handlePublish(false), className: 'action-btn publish-btn' });
+    }
     actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?scope=${encodeURIComponent(scopeParam)}&file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' });
     actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
   }

@@ -9,6 +9,7 @@ import { EditorPage } from './pages/EditorPage';
 import { SourcePage } from './pages/SourcePage';
 import { ProjectPage } from './pages/ProjectPage';
 import { AdminPage } from './pages/AdminPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 // Rutas del cliente. Los scopes son los tres prefijos estables:
 //   /me/*      → docs privados del user (requiere auth)
@@ -25,6 +26,7 @@ export function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
 
           <Route path="/me" element={<ScopeLayout kind="me" />}>
             <Route index element={<IndexPage />} />

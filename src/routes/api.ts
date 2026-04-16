@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import { readFile, writeFile, unlink, rm } from 'fs/promises';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import archiver from 'archiver';
 import { z } from 'zod';
-import { md } from '../lib/config.js';
+import { md, STORAGE_DIR } from '../lib/config.js';
 import {
   resolveDoc,
   getFiles,
@@ -73,6 +73,11 @@ const CommentBody = z.object({
 const CommentDeleteBody = z.object({
   file: z.string().min(1),
   id: z.string().min(1),
+});
+
+const PublishBody = z.object({
+  file: z.string().min(1),
+  overwrite: z.boolean().optional(),
 });
 
 // All private API routes require cookie auth.
@@ -371,6 +376,54 @@ router.post('/comments', ah(async (req, res) => {
     authorId,
   });
   res.json({ ok: true, comment });
+}));
+
+// Publish: copia un doc del scope actual (me | team) al scope public.
+// Solo admins pueden publicar (porque canWrite en public lo son solo ellos).
+// Si existe un doc con el mismo path en public, responde 409 a menos que
+// el caller mande `overwrite: true`.
+router.post('/publish', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo admins pueden publicar docs' });
+  }
+  if (scope.kind === 'public') {
+    return res.status(400).json({ error: 'El doc ya esta en Publicos' });
+  }
+  const parsed = PublishBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file es requerido' });
+  const { file, overwrite } = parsed.data;
+  if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
+
+  const srcPath = resolveDoc(file, scope.basePath);
+  if (!srcPath) return res.status(400).json({ error: 'Ruta invalida' });
+  const srcStats = await statOrNull(srcPath);
+  if (!srcStats || !srcStats.isFile()) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+  const publicBase = join(STORAGE_DIR, 'public');
+  const destPath = resolveDoc(file, publicBase);
+  if (!destPath) return res.status(400).json({ error: 'Ruta invalida' });
+
+  const destStats = await statOrNull(destPath);
+  if (destStats && destStats.isFile() && !overwrite) {
+    return res.status(409).json({ error: 'Ya existe un doc publico con ese nombre', conflict: true });
+  }
+
+  const content = await readFile(srcPath, 'utf-8');
+  await ensureDir(dirname(destPath));
+  // Backup si se va a sobrescribir.
+  if (destStats?.isFile()) {
+    try {
+      const old = await readFile(destPath, 'utf-8');
+      await saveVersion(destPath, old, publicBase);
+    } catch (err) {
+      if (!isEnoent(err)) throw err;
+    }
+  }
+  await writeFile(destPath, content);
+  invalidateSearchIndex('public');
+  res.json({ ok: true, file });
 }));
 
 router.post('/comments/delete', ah(async (req, res) => {

@@ -5,7 +5,9 @@ import rateLimit from 'express-rate-limit';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod';
-import { login, verifyToken, COOKIE_NAME } from './lib/auth.js';
+import { login, verifyToken, COOKIE_NAME, requireAuth, invalidateHydrateCache } from './lib/auth.js';
+import { findByUsername, findById, updatePassword, verifyPassword } from './lib/users.js';
+import { sql } from './lib/db.js';
 import { listTeamsForUser } from './lib/teams.js';
 import { seedAdminIfEmpty } from './lib/seed.js';
 import { runMigrations } from './lib/migrate.js';
@@ -93,13 +95,15 @@ app.get('/api/auth/me', (req, res, next) => {
     return;
   }
   // Hidratamos teams desde la DB (cacheado 60s) para que el cliente pueda
-  // pintar el scope-switcher sin otra ida y vuelta.
-  listTeamsForUser(decoded.userId)
-    .then((teams) => {
+  // pintar el scope-switcher sin otra ida y vuelta. Tambien devolvemos el
+  // displayName para que la pagina de perfil pueda prellenarse.
+  Promise.all([listTeamsForUser(decoded.userId), findById(decoded.userId)])
+    .then(([teams, user]) => {
       res.json({
         authenticated: true,
         user: decoded.username,
         role: decoded.role,
+        displayName: user?.displayName ?? null,
         teams,
       });
     })
@@ -133,6 +137,56 @@ app.post('/api/auth/login', loginLimiter, (req, res, next) => {
       res.json({ ok: true });
     })
     .catch(next);
+});
+
+// Self-service: cualquier user logueado puede cambiar su propio displayName
+// y password. Para cambiar password se exige la actual (defensa contra
+// session-hijack local). No permite cambiar username/role (eso es admin-only).
+const UpdateMeBody = z.object({
+  displayName: z.string().trim().max(100).optional(),
+  currentPassword: z.string().min(1).optional(),
+  newPassword: z.string().min(4).max(200).optional(),
+}).refine(
+  (data) => (data.newPassword !== undefined) === (data.currentPassword !== undefined),
+  { message: 'currentPassword y newPassword deben enviarse juntos' },
+);
+
+app.patch('/api/auth/me', requireAuth, (req, res, next) => {
+  (async () => {
+    const parsed = UpdateMeBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Body invalido' });
+      return;
+    }
+    const { displayName, currentPassword, newPassword } = parsed.data;
+    if (displayName === undefined && !newPassword) {
+      res.status(400).json({ error: 'Nada para actualizar' });
+      return;
+    }
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: 'No autorizado' });
+      return;
+    }
+    if (newPassword) {
+      const full = await findByUsername(authUser.username);
+      if (!full) {
+        res.status(404).json({ error: 'Usuario no encontrado' });
+        return;
+      }
+      const ok = await verifyPassword(currentPassword!, full.passwordHash);
+      if (!ok) {
+        res.status(401).json({ error: 'Password actual incorrecta' });
+        return;
+      }
+      await updatePassword(authUser.username, newPassword);
+    }
+    if (displayName !== undefined) {
+      await sql`UPDATE users SET display_name = ${displayName} WHERE id = ${authUser.userId}`;
+    }
+    invalidateHydrateCache(authUser.userId);
+    res.json({ ok: true });
+  })().catch(next);
 });
 
 app.post('/api/auth/logout', (_req, res) => {

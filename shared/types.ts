@@ -33,6 +33,7 @@ export interface AuthResponse {
   authenticated: boolean;
   user?: string;
   role?: 'admin' | 'member';
+  displayName?: string | null;
   teams?: TeamMembership[];
 }
 

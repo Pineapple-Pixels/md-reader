@@ -82,7 +82,7 @@ export function Topbar() {
           <Link to="/admin" className="topbar-admin">Admin</Link>
         )}
         {isAuthenticated && user && (
-          <span className="topbar-user" title="Usuario actual">{user}</span>
+          <Link to="/profile" className="topbar-user" title="Mi perfil">{user}</Link>
         )}
         <button
           className="theme-toggle"
