@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 import type { Comment } from '@shared/types';
 
@@ -17,6 +18,9 @@ export function SourcePage() {
 
   const sourcePrefix = `${urlPrefix}/source/`;
   const file = decodeURIComponent(location.pathname.replace(sourcePrefix, ''));
+
+  const openTab = useNavStore((s) => s.openTab);
+  useEffect(() => { openTab(file); }, [file, openTab]);
 
   // canWrite (editar, eliminar comentarios propios) → me siempre, team miembro, public solo admin.
   // canComment → cualquier user logueado. Anonimos (public sin login) solo ven.

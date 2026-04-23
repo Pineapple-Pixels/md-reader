@@ -1,0 +1,26 @@
+/* === App shell layout === */
+.app-shell { display: flex; flex-direction: column; height: 100vh; }
+.app-body { display: flex; flex: 1; overflow: hidden; }
+.app-main { flex: 1; overflow-y: auto; background: var(--bg); }
+
+/* === Mobile sidebar backdrop === */
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.4);
+    animation: backdrop-fade-in 0.2s ease;
+  }
+  .sidebar-backdrop.visible {
+    display: block;
+  }
+
+  @keyframes backdrop-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}

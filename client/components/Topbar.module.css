@@ -1,0 +1,53 @@
+/* === Topbar (Dusk redesign) === */
+.topbar { border-bottom: 1px solid var(--border); background: var(--bg-card); }
+.topbar-main { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; height: 44px; }
+.topbar-left { position: relative; }
+.topbar-right { display: flex; align-items: center; gap: 6px; }
+.topbar-admin { font-size: 11px; padding: 3px 8px; border-radius: 6px; text-decoration: none; color: var(--accent); border: 1px solid var(--accent-light); background: var(--accent-bg); transition: all 0.15s; }
+.topbar-admin:hover { background: var(--accent); color: white; }
+.topbar-logout, .topbar-login { font-size: 11px; padding: 3px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-input); background: var(--bg-card); color: var(--text); text-decoration: none; transition: all 0.15s; font-family: inherit; }
+.topbar-logout:hover, .topbar-login:hover { background: var(--bg-hover); }
+.topbar-theme-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--border-input); background: var(--bg-card); cursor: pointer; color: var(--text-muted); transition: all 0.12s; }
+.topbar-theme-btn:hover { background: var(--bg-hover); color: var(--text); }
+.topbar-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.topbar-avatar span { color: #fff; font-size: 10px; font-weight: 600; }
+.topbar-user-btn { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 7px; border: none; background: none; cursor: pointer; font-size: 12px; color: var(--text-muted); transition: color 0.12s; text-decoration: none; font-family: inherit; }
+.topbar-user-btn:hover { color: var(--text); }
+.topbar-breadcrumbs { flex: 1; display: flex; align-items: center; gap: 4px; margin-left: 12px; font-size: 12px; color: var(--text-muted); overflow: hidden; }
+.topbar-breadcrumbs .sep { opacity: 0.4; margin: 0 2px; }
+.topbar-breadcrumbs .current { color: var(--text); font-weight: 500; }
+.topbar-breadcrumbs .editor-hint { color: var(--accent); font-weight: 500; }
+.topbar-breadcrumbs a { color: var(--text-muted); text-decoration: none; transition: color 0.1s; }
+.topbar-breadcrumbs a:hover { color: var(--accent); }
+.topbar-tabs { display: flex; align-items: center; gap: 2px; padding: 0 12px 6px; overflow-x: auto; }
+.topbar-tab { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.12s; font-weight: 400; white-space: nowrap; font-family: inherit; }
+.topbar-tab.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.topbar-tab:hover:not(.active) { background: var(--bg-hover); }
+.topbar-tab-close { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 4px; transition: all 0.1s; opacity: 0.5; }
+.topbar-tab-close:hover { opacity: 1; color: var(--danger); }
+.scope-switcher { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border-input); background: var(--bg-card); cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text); transition: all 0.12s; font-family: inherit; }
+.scope-switcher:hover { border-color: var(--accent); }
+.scope-menu { position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-dropdown); min-width: 200px; z-index: 1000; overflow: hidden; padding: 4px; }
+.scope-menu-item { display: block; padding: 8px 12px; text-decoration: none; color: var(--text); font-size: 13px; transition: background 0.1s; border-radius: 6px; }
+.scope-menu-item:hover { background: var(--accent-bg); color: var(--accent); }
+
+/* === Hamburger (mobile only) === */
+.hamburger-btn { display: none; }
+
+@media (max-width: 768px) {
+  .hamburger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: 7px;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+  }
+  .hamburger-btn:hover { background: var(--bg-hover); color: var(--text); }
+}

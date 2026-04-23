@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 import type { RenderResponse, Comment } from '@shared/types';
 
@@ -21,6 +22,9 @@ export function DocPage() {
 
   const docPrefix = `${urlPrefix}/doc/`;
   const file = decodeURIComponent(location.pathname.replace(docPrefix, ''));
+
+  const openTab = useNavStore((s) => s.openTab);
+  useEffect(() => { openTab(file); }, [file, openTab]);
 
   const { data, isLoading, error } = useQuery<RenderResponse>({
     queryKey: ['doc', scopeId, file],

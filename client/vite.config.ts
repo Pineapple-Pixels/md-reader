@@ -5,6 +5,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  css: { modules: { localsConvention: 'camelCaseOnly' } },
   root: resolve(__dirname),
   build: {
     outDir: resolve(__dirname, '../public'),

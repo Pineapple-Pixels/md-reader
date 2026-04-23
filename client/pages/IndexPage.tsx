@@ -1,9 +1,32 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
-import { FileList } from '../components/FileList';
 import type { FileEntry } from '@shared/types';
+import s from './IndexPage.module.css';
+
+function FolderCardIcon() {
+  return (
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M2 4a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414A1 1 0 0010.414 4H16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" />
+    </svg>
+  );
+}
+
+function FileListIcon() {
+  return (
+    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('es-AR', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
 
 // Index unificado para cualquier scope. La diferencia entre me/team/public es
 // solo si se muestran controles de escritura — eso lo decidimos localmente
@@ -160,10 +183,36 @@ export function IndexPage() {
     }
   }
 
+  const rootFiles = files.filter((f) => !f.name.includes('/'));
+  const folders: Record<string, FileEntry[]> = {};
+  for (const f of files) {
+    if (!f.name.includes('/')) continue;
+    const topFolder = f.name.split('/')[0];
+    if (!folders[topFolder]) folders[topFolder] = [];
+    folders[topFolder].push(f);
+  }
+
+  const folderEntries = Object.entries(folders);
+  const hasContent = files.length > 0;
+
   const title =
     scope.kind === 'me' ? 'Mis documentos' :
     scope.kind === 'team' ? `Documentos del team` :
     'Documentos publicos';
+
+  function renderActions(name: string) {
+    if (!canWrite) return null;
+    return (
+      <span className={s.indexFileActions}>
+        <button className="action-btn download-btn" onClick={(e) => { e.preventDefault(); downloadDoc(name); }}>
+          Descargar
+        </button>
+        <button className="action-btn delete-btn" onClick={(e) => { e.preventDefault(); deleteDoc(name); }}>
+          Eliminar
+        </button>
+      </span>
+    );
+  }
 
   return (
     <div className="container">
@@ -207,16 +256,52 @@ export function IndexPage() {
         </>
       )}
 
-      {files.length > 0 ? (
-        <FileList
-          files={files}
-          urlPrefix={`${urlPrefix}/doc/`}
-          projectPrefix={`${urlPrefix}/project/`}
-          actions={canWrite ? [
-            { label: 'Descargar', className: 'download-btn', onClick: downloadDoc },
-            { label: 'Eliminar', className: 'delete-btn', onClick: deleteDoc },
-          ] : []}
-        />
+      {hasContent ? (
+        <>
+          {folderEntries.length > 0 && (
+            <>
+              <h2 className={s.indexSectionLabel}>Carpetas</h2>
+              <div className={s.indexFolderGrid}>
+                {folderEntries.map(([folder, docs]) => {
+                  const latestDate = formatDate(
+                    new Date(Math.max(...docs.map((d) => new Date(d.modified).getTime()))).toISOString()
+                  );
+                  return (
+                    <Link key={folder} to={`${urlPrefix}/project/${folder}`} className={s.indexFolderCard}>
+                      <span className={s.indexFolderIcon} aria-hidden="true"><FolderCardIcon /></span>
+                      <span className={s.indexFolderInfo}>
+                        <span className={s.indexFolderName}>{folder}</span>
+                        <span className={s.indexFolderMeta}>
+                          {docs.length} {docs.length === 1 ? 'doc' : 'docs'} &middot; {latestDate}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {rootFiles.length > 0 && (
+            <>
+              <h2 className={s.indexSectionLabel}>Documentos</h2>
+              <ul className={s.indexFileList}>
+                {rootFiles.map((doc) => (
+                  <li key={doc.name} className={s.indexFileItem}>
+                    <span className={s.indexFileIcon} aria-hidden="true"><FileListIcon /></span>
+                    <span className={s.indexFileInfo}>
+                      <Link to={`${urlPrefix}/doc/${doc.name}`} className={s.indexFileName}>
+                        {doc.name.split('/').pop()}
+                      </Link>
+                      <span className={s.indexFileDate}>{formatDate(doc.modified)}</span>
+                    </span>
+                    {renderActions(doc.name)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
       ) : (
         <p className="empty-msg">No hay documentos en este scope.</p>
       )}

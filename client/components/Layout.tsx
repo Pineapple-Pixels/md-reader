@@ -1,9 +1,12 @@
+import { useState, useCallback } from 'react';
 import { Outlet, useParams, Navigate } from 'react-router-dom';
 import type { Scope } from '@shared/api';
 import { ScopeProvider } from '../hooks/useScope';
 import { useAuth } from '../hooks/useAuth';
 import { SearchModal } from './SearchModal';
 import { Topbar } from './Topbar';
+import { Sidebar } from './Sidebar';
+import s from './Layout.module.css';
 
 // ScopeLayout resuelve el Scope efectivo (parsea slug del url si aplica),
 // valida permisos del user para ese scope y envuelve el subtree con
@@ -40,10 +43,24 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
     kind === 'team' ? { kind: 'team', slug: slug! } :
     { kind: 'public' };
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
+  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+
   return (
     <ScopeProvider scope={scope}>
-      <Topbar />
-      <Outlet />
+      <div className={s.appShell}>
+        <Topbar onHamburgerClick={openMobileSidebar} />
+        <div className={s.appBody}>
+          <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={closeMobileSidebar} />
+          {mobileSidebarOpen && (
+            <div className={`${s.sidebarBackdrop} ${s.visible}`} onClick={closeMobileSidebar} />
+          )}
+          <main className={s.appMain}>
+            <Outlet />
+          </main>
+        </div>
+      </div>
       {isAuthenticated && <SearchModal />}
     </ScopeProvider>
   );

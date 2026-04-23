@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar } from '../components/Toolbar';
 
 export function EditorPage() {
@@ -15,6 +16,9 @@ export function EditorPage() {
 
   const editPrefix = `${urlPrefix}/edit/`;
   const file = decodeURIComponent(location.pathname.replace(editPrefix, ''));
+
+  const openTab = useNavStore((s) => s.openTab);
+  useEffect(() => { openTab(file); }, [file, openTab]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['doc-raw', scopeId, file],

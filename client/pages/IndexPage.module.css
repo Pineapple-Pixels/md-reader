@@ -1,0 +1,88 @@
+/* === IndexPage Dusk === */
+.index-section-label {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  margin: 28px 0 12px;
+  padding: 0 2px;
+}
+.index-section-label:first-child { margin-top: 0; }
+
+.index-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.index-folder-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+  color: var(--text);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.index-folder-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: var(--accent);
+}
+
+.index-folder-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.index-folder-icon svg { width: 20px; height: 20px; fill: white; }
+
+.index-folder-info { min-width: 0; flex: 1; }
+.index-folder-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.index-folder-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; display: block; }
+
+.index-file-list { list-style: none; padding: 0; margin: 0; }
+.index-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.index-file-item:hover { background: var(--bg-hover); }
+.index-file-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--bg-code);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.index-file-icon svg { width: 16px; height: 16px; fill: var(--text-muted); }
+.index-file-info { flex: 1; min-width: 0; }
+.index-file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.index-file-name:hover { text-decoration: underline; }
+.index-file-date { font-size: 12px; color: var(--text-muted); margin-top: 1px; display: block; }
+.index-file-actions { display: flex; gap: 4px; flex-shrink: 0; }

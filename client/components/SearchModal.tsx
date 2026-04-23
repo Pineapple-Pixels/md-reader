@@ -5,6 +5,7 @@ import { Command } from 'cmdk';
 import MiniSearch from 'minisearch';
 import type { SearchEntry } from '@shared/types';
 import { useScope, useScopedFetch } from '../hooks/useScope';
+import s from './SearchModal.module.css';
 
 export function SearchModal() {
   const [open, setOpen] = useState(false);
@@ -75,43 +76,43 @@ export function SearchModal() {
   }
 
   return (
-    <div className="search-overlay" onClick={() => setOpen(false)}>
-      <div className="search-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className={s.searchOverlay} onClick={() => setOpen(false)}>
+      <div className={s.searchDialog} onClick={(e) => e.stopPropagation()}>
         <Command shouldFilter={false} label="Buscar documentos">
           <Command.Input
             ref={inputRef}
             value={query}
             onValueChange={setQuery}
             placeholder="Buscar documentos..."
-            className="search-input"
+            className={s.searchInput}
           />
-          <Command.List className="search-list">
+          <Command.List className={s.searchList}>
             {entries.length === 0 && query === '' && (
-              <Command.Empty className="search-empty">Cargando...</Command.Empty>
+              <Command.Empty className={s.searchEmpty}>Cargando...</Command.Empty>
             )}
             {entries.length > 0 && results.length === 0 && (
-              <Command.Empty className="search-empty">Sin resultados para &quot;{query}&quot;</Command.Empty>
+              <Command.Empty className={s.searchEmpty}>Sin resultados para &quot;{query}&quot;</Command.Empty>
             )}
             {results.map((entry) => (
               <Command.Item
                 key={entry.file}
                 value={entry.file}
                 onSelect={() => handleNavigate(entry.file)}
-                className="search-item"
+                className={s.searchItem}
               >
-                <div className="search-item-header">
-                  <span className="search-item-title">{highlight(entry.title, query)}</span>
+                <div className={s.searchItemHeader}>
+                  <span className={s.searchItemTitle}>{highlight(entry.title, query)}</span>
                 </div>
-                <span className="search-item-path">{entry.file}</span>
+                <span className={s.searchItemPath}>{entry.file}</span>
                 {query.trim() && entry.content && (
-                  <span className="search-item-snippet">
+                  <span className={s.searchItemSnippet}>
                     {highlight(entry.content.slice(0, 120), query)}
                   </span>
                 )}
               </Command.Item>
             ))}
           </Command.List>
-          <div className="search-footer">
+          <div className={s.searchFooter}>
             <span><kbd>&uarr;&darr;</kbd> navegar</span>
             <span><kbd>&crarr;</kbd> abrir</span>
             <span><kbd>esc</kbd> cerrar</span>
