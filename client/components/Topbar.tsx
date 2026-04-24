@@ -38,6 +38,8 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
     queryClient.clear();
+    useNavStore.persist.clearStorage();
+    localStorage.removeItem('md-reader-favorites');
     navigate('/login', { replace: true });
   }
 

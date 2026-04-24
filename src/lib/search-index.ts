@@ -1,7 +1,9 @@
-import { readFile } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 import { join } from 'path';
 import { getFiles } from './storage.js';
 import { logger } from './logger.js';
+
+const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
 
 export type SearchIndexEntry = {
   file: string;
@@ -62,6 +64,8 @@ export async function getSearchIndex(
   const settled = await Promise.allSettled(
     files.map(async (f): Promise<SearchIndexEntry> => {
       const filePath = join(basePath, f.name);
+      const st = await stat(filePath);
+      if (st.size > MAX_FILE_SIZE) throw new Error(`file too large: ${f.name} (${st.size} bytes)`);
       const content = await readFile(filePath, 'utf-8');
       const plain = stripMarkdown(content);
       return {

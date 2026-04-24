@@ -18,6 +18,7 @@ import type { ResolvedScope } from '../lib/storage.js';
 import {
   getComments,
   addComment,
+  getComment,
   deleteComment,
   deleteAllComments,
 } from '../lib/comments.js';
@@ -363,6 +364,7 @@ router.post('/comments', ah(async (req, res) => {
     return res.status(400).json({ error: first?.message ?? 'Body invalido' });
   }
   const { file, text, line } = parsed.data;
+  if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const stats = await statOrNull(filePath);
@@ -435,6 +437,13 @@ router.post('/comments/delete', ah(async (req, res) => {
   const parsed = CommentDeleteBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y id son requeridos' });
   const { file, id } = parsed.data;
+  const comment = await getComment(scope.id, file, id);
+  if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+  const isOwner = req.user?.userId != null && comment.authorId === req.user.userId;
+  const isAdmin = req.user?.role === 'admin';
+  if (!isOwner && !isAdmin) {
+    return res.status(403).json({ error: 'Solo podes borrar tus propios comentarios' });
+  }
   await deleteComment(scope.id, file, id);
   res.json({ ok: true });
 }));

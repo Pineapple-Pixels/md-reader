@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 
 declare const hljs: { highlightAll: () => void };
@@ -72,7 +73,7 @@ export function ProjectPage() {
       {loadingPage ? (
         <div className="page-loading">Cargando...</div>
       ) : (
-        <div className="doc" dangerouslySetInnerHTML={{ __html: docHtml }} />
+        <div className="doc" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docHtml) }} />
       )}
     </div>
   );

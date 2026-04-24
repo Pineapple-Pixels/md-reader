@@ -93,10 +93,6 @@ export function SourcePage() {
     }
   }
 
-  function escapeHtml(s: string) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
   const docUrl = `${urlPrefix}/doc/${file}`;
 
   const actions: ToolbarAction[] = [
@@ -130,7 +126,7 @@ export function SourcePage() {
                 ) : (
                   <span className="line-num">{lineNum}</span>
                 )}
-                <span className="line-content" dangerouslySetInnerHTML={{ __html: escapeHtml(line) }} />
+                <span className="line-content">{line}</span>
               </div>
               {hasComment && hasComment.map((c) => (
                 <div key={c.id} className="comment-box">

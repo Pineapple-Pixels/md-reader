@@ -337,15 +337,15 @@ function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClic
     >
       {isMarkdown ? <FileIcon /> : <FileGenericIcon />}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayName}</span>
-      <span
+      <button
+        type="button"
         className={s.sidebarFavBtn}
         onClick={(e) => { e.stopPropagation(); onToggleFav(); }}
         style={{ opacity: favorited ? 0.8 : 0, color: favorited ? 'var(--accent)' : 'var(--text-muted)' }}
-        role="button"
         aria-label={favorited ? 'Quitar de favoritos' : 'Agregar a favoritos'}
       >
         {favorited ? '★' : '☆'}
-      </span>
+      </button>
     </button>
   );
 }

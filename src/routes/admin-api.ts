@@ -22,6 +22,7 @@ import {
 
 import { sql } from '../lib/db.js';
 import { parsePagination } from '../lib/route-helpers.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 
@@ -95,6 +96,7 @@ router.post('/users', async (req, res, next) => {
     if (displayName !== undefined) opts.displayName = displayName;
     if (role !== undefined) opts.role = role;
     const user = await createUser(opts);
+    logger.info('admin', `user created: ${username}`, { by: req.user?.username, role: role ?? 'member' });
     res.status(201).json({
       id: user.id,
       username: user.username,
@@ -138,8 +140,10 @@ router.delete('/users/:username', async (req, res, next) => {
     if (req.user?.username.toLowerCase() === username.toLowerCase()) {
       return res.status(400).json({ error: 'No podes eliminarte a vos mismo' });
     }
+    await sql`UPDATE comments SET author_id = NULL WHERE author_id = (SELECT id FROM users WHERE LOWER(username) = LOWER(${username}))`;
     const deleted = await deleteUser(username);
     if (!deleted) return res.status(404).json({ error: 'Usuario no encontrado' });
+    logger.info('admin', `user deleted: ${username}`, { by: req.user?.username });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -176,6 +180,7 @@ router.post('/teams', async (req, res, next) => {
       return res.status(400).json({ error: 'Slug invalido (solo lowercase, numeros y guion)' });
     }
     const team = await createTeam({ slug, name });
+    logger.info('admin', `team created: ${slug}`, { by: req.user?.username });
     res.status(201).json({
       id: team.id,
       slug: team.slug,
@@ -195,6 +200,7 @@ router.delete('/teams/:slug', async (req, res, next) => {
     const { slug } = req.params;
     const deleted = await deleteTeam(slug);
     if (!deleted) return res.status(404).json({ error: 'Team no encontrado' });
+    logger.info('admin', `team deleted: ${slug}`, { by: req.user?.username });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

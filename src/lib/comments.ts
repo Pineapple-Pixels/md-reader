@@ -1,13 +1,5 @@
 import { sql } from './db.js';
-
-export interface Comment {
-  id: string;
-  line: number | null;
-  text: string;
-  author: string;
-  authorId: number | null;
-  createdAt: string;
-}
+import type { Comment } from '../../shared/types.js';
 
 /** Row shape returned by postgres.js */
 interface CommentRow {
@@ -67,6 +59,15 @@ export async function addComment(
     RETURNING id, line, text, author, author_id, created_at
   `;
   return rowToComment(rows[0]!);
+}
+
+export async function getComment(scopeId: string, file: string, id: string): Promise<Comment | null> {
+  const rows = await sql<CommentRow[]>`
+    SELECT id, line, text, author, author_id, created_at
+    FROM comments
+    WHERE id = ${id} AND scope_id = ${scopeId} AND file = ${file}
+  `;
+  return rows[0] ? rowToComment(rows[0]) : null;
 }
 
 export async function deleteComment(scopeId: string, file: string, id: string): Promise<void> {

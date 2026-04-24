@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
+import DOMPurify from 'dompurify';
 import type { RenderResponse, Comment } from '@shared/types';
 
 declare const hljs: { highlightAll: () => void };
@@ -38,42 +39,44 @@ export function DocPage() {
   const canComment = isAuthenticated && (data?.canComment ?? false);
 
   useEffect(() => {
-    if (data?.html) {
-      setTimeout(() => {
-        hljs?.highlightAll();
-        document.querySelectorAll('.doc pre').forEach((pre) => {
-          if (pre.querySelector('.copy-btn')) return;
-          const btn = document.createElement('button');
-          btn.className = 'copy-btn';
-          btn.textContent = 'Copiar';
-          btn.addEventListener('click', async () => {
-            const code = pre.querySelector('code');
-            if (!code) return;
-            try {
-              await navigator.clipboard.writeText(code.textContent || '');
-              btn.textContent = 'Copiado!';
-              setTimeout(() => (btn.textContent = 'Copiar'), 2000);
-            } catch {
-              btn.textContent = 'Error';
-              setTimeout(() => (btn.textContent = 'Copiar'), 2000);
-            }
-          });
-          pre.appendChild(btn);
+    if (!data?.html) return;
+    const timer = setTimeout(() => {
+      hljs?.highlightAll();
+      docRef.current?.querySelectorAll('.doc pre').forEach((pre) => {
+        if (pre.querySelector('.copy-btn')) return;
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'Copiar';
+        btn.addEventListener('click', async () => {
+          const code = pre.querySelector('code');
+          if (!code) return;
+          try {
+            await navigator.clipboard.writeText(code.textContent || '');
+            btn.textContent = 'Copiado!';
+            setTimeout(() => (btn.textContent = 'Copiar'), 2000);
+          } catch {
+            btn.textContent = 'Error';
+            setTimeout(() => (btn.textContent = 'Copiar'), 2000);
+          }
         });
-      }, 0);
-    }
+        pre.appendChild(btn);
+      });
+    }, 0);
+    return () => clearTimeout(timer);
   }, [data?.html]);
 
-  // Group comments by source line
-  const commentsByLine: Record<number, Comment[]> = {};
-  if (data?.comments) {
-    for (const c of data.comments) {
-      if (c.line != null) {
-        if (!commentsByLine[c.line]) commentsByLine[c.line] = [];
-        commentsByLine[c.line].push(c);
+  const commentsByLine = useMemo(() => {
+    const map: Record<number, Comment[]> = {};
+    if (data?.comments) {
+      for (const c of data.comments) {
+        if (c.line != null) {
+          if (!map[c.line]) map[c.line] = [];
+          map[c.line].push(c);
+        }
       }
     }
-  }
+    return map;
+  }, [data?.comments]);
 
   // Inject comment indicators after render
   useEffect(() => {
@@ -264,7 +267,7 @@ export function DocPage() {
     <div className="container">
       <Toolbar actions={actions} />
       <div className="doc-with-comments">
-        <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: data?.html || '' }} />
+        <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data?.html || '') }} />
         {activeBlock != null && (
           <div className="inline-comment-panel">
             <div className="inline-comment-header">

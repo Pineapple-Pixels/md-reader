@@ -68,6 +68,14 @@ const commentLimiter = rateLimit({
   message: 'Demasiados comentarios, intenta mas tarde',
 });
 
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Demasiadas escrituras, intenta mas tarde',
+});
+
 const publicApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
@@ -125,6 +133,7 @@ app.post('/api/auth/login', loginLimiter, (req, res, next) => {
   login(user, pass)
     .then((token) => {
       if (!token) {
+        logger.warn('auth', `login failed: ${user}`);
         res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
         return;
       }
@@ -201,6 +210,11 @@ app.post('/api/auth/logout', (_req, res) => {
 // Rate limit comment creation (applies before routers)
 app.post('/api/comments', commentLimiter);
 
+// Rate limit file write operations
+app.post('/api/push', writeLimiter);
+app.post('/api/save', writeLimiter);
+app.delete('/api/delete', writeLimiter);
+
 // Public API routes (no auth, rate limited)
 app.use('/api/public', publicApiLimiter, publicApiRouter);
 
@@ -226,7 +240,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? err.stack : undefined;
   logger.error('http', message, { stack });
-  res.status(500).json({ error: message });
+  const clientMsg = process.env['NODE_ENV'] === 'production' ? 'Error interno del servidor' : message;
+  res.status(500).json({ error: clientMsg });
 });
 
 const PORT = Number(process.env['PORT']) || 3500;
