@@ -20,6 +20,9 @@ interface ScopeLayoutProps {
 export function ScopeLayout({ kind }: ScopeLayoutProps) {
   const { slug } = useParams<{ slug?: string }>();
   const { isAuthenticated, isLoading, teams } = useAuth();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
+  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 
   // /me y /t/:slug requieren auth. /pub es accesible sin auth.
   if (kind !== 'public') {
@@ -42,10 +45,6 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
     kind === 'me' ? { kind: 'me' } :
     kind === 'team' ? { kind: 'team', slug: slug! } :
     { kind: 'public' };
-
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
-  const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 
   return (
     <ScopeProvider scope={scope}>
