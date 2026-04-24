@@ -24,7 +24,7 @@ export function LoginPage() {
         body: JSON.stringify({ user, pass }),
       });
       if (data.ok) {
-        queryClient.invalidateQueries({ queryKey: ['auth'] });
+        await queryClient.invalidateQueries({ queryKey: ['auth'] });
         navigate('/me', { replace: true });
       } else {
         setError(data.error || 'Usuario o contrasena incorrectos');
