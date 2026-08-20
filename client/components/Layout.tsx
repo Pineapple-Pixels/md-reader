@@ -19,14 +19,17 @@ interface ScopeLayoutProps {
 
 export function ScopeLayout({ kind }: ScopeLayoutProps) {
   const { slug } = useParams<{ slug?: string }>();
-  const { isAuthenticated, isLoading, teams } = useAuth();
+  const { isAuthenticated, isLoading, isFetching, teams } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
   const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 
   // /me y /t/:slug requieren auth. /pub es accesible sin auth.
   if (kind !== 'public') {
-    if (isLoading) {
+    // isFetching (y no solo isLoading) para el caso de data cacheada stale:
+    // si hay un /auth/me en vuelo revalidando la sesion, esperamos el
+    // resultado en vez de rebotar a /login con el valor viejo.
+    if (isLoading || (isFetching && !isAuthenticated)) {
       return <div className="container"><p className="loading-msg">Cargando...</p></div>;
     }
     if (!isAuthenticated) {

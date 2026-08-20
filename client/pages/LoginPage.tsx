@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
+import { authQueryOptions } from '../hooks/useAuth';
 
 export function LoginPage() {
   const [error, setError] = useState('');
@@ -24,7 +25,14 @@ export function LoginPage() {
         body: JSON.stringify({ user, pass }),
       });
       if (data.ok) {
-        await queryClient.invalidateQueries({ queryKey: ['auth'] });
+        // No alcanza con invalidateQueries: si llegamos a /login por el rebote
+        // de un guard, la query ['auth'] ya no tiene observers activos, asi que
+        // invalidate la marca stale pero NO refetchea. Navegariamos a /me con
+        // el `{ authenticated: false }` viejo todavia en cache y el guard nos
+        // rebotaria de vuelta a /login (de ahi el "hay que loguearse 2 veces").
+        // fetchQuery con staleTime 0 fuerza el request y deja el cache poblado
+        // con la sesion nueva antes de navegar.
+        await queryClient.fetchQuery({ ...authQueryOptions, staleTime: 0 });
         navigate('/me', { replace: true });
       } else {
         setError(data.error || 'Usuario o contrasena incorrectos');
