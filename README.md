@@ -102,6 +102,30 @@ Cada usuario opera en un "scope":
 | `npm run lint` | Lint con ESLint |
 | `npm run typecheck` | Chequeo de tipos TypeScript |
 | `npm run db:migrate` | Correr migraciones de DB |
+| `npm run test:e2e` | Tests end-to-end y visuales con Playwright |
+| `npm run test:e2e:update` | Regenerar las capturas de referencia |
+
+### Tests end-to-end (Playwright)
+
+Levantan el build de produccion en el puerto 3600, sobre una base y un storage nuevos en cada corrida
+(`mdreader_e2e`, `.e2e-storage/`), cargan datos de prueba (`e2e/seed.ts`) y recorren login, organizaciones,
+diseno por org, temas y la cuenta sin organizacion. Comparan cada pantalla contra las capturas de
+referencia en `e2e/app.spec.ts-snapshots/` y verifican que cambiar el tema de la app no mueva un pixel del documento.
+
+Necesitan un Postgres con permiso para crear bases. Por defecto usan uno descartable en el puerto 5433:
+
+```bash
+docker run -d --name mdreader-e2e -e POSTGRES_USER=mdreader -e POSTGRES_PASSWORD=mdreader -p 5433:5432 postgres:16-alpine
+```
+
+```bash
+npm run test:e2e
+```
+
+Otro servidor: `E2E_DATABASE_URL=postgres://user:pass@host:puerto/postgres`. Si un cambio de UI es a proposito,
+regenerar las referencias con `npm run test:e2e:update` y revisar las imagenes nuevas antes de commitearlas.
+El reporte con capturas y trazas de los fallos queda en `playwright-report/` (`npx playwright show-report`).
+Las referencias son de Windows (`-win32.png`); en otro sistema operativo hay que generarlas de nuevo.
 
 ### Gestion de usuarios (CLI)
 
