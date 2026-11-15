@@ -1,3 +1,4 @@
+import { stripDocExt } from '@shared/doc-types';
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -65,7 +66,7 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
   const initials = (displayName || user || '?').slice(0, 2).toUpperCase();
 
   return (
-    <div className={s.topbar}>
+    <div className={s.topbar} data-noprint>
       <div className={s.topbarMain}>
         <button
           type="button"
@@ -155,7 +156,7 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
       {openTabs.length > 0 && (
         <div className={s.topbarTabs}>
           {openTabs.map((file) => {
-            const name = file.replace(/\.md$/i, '').split('/').pop() ?? file;
+            const name = stripDocExt(file).split('/').pop() ?? file;
             const isActive = decodeURIComponent(location.pathname).includes(file);
             return (
               <button
@@ -205,7 +206,7 @@ function buildBreadcrumbs(pathname: string, urlPrefix: string): Crumb[] {
     crumbs.push({ label: parts[0] });
   }
 
-  const fileName = parts[parts.length - 1].replace(/\.md$/i, '');
+  const fileName = stripDocExt(parts[parts.length - 1]);
   if (mode === 'doc') {
     crumbs.push({ label: fileName });
   } else {

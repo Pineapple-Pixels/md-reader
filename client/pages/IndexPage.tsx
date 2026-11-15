@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import type { FileEntry } from '@shared/types';
+import { docKind, isDocFile, stripDocExt } from '@shared/doc-types';
 import s from './IndexPage.module.css';
 
 function FolderCardIcon() {
@@ -61,11 +62,15 @@ export function IndexPage() {
     e.preventDefault();
     let file = newFile.trim();
     if (!file) return;
-    if (!file.endsWith('.md')) file += '.md';
+    if (!isDocFile(file)) file += '.md';
+    const name = stripDocExt(file).split('/').pop() ?? file;
+    const content = docKind(file) === 'html'
+      ? `<!doctype html>\n<html lang="es">\n<head>\n  <meta charset="utf-8">\n  <title>${name}</title>\n</head>\n<body>\n  <h1>${name}</h1>\n</body>\n</html>\n`
+      : `# ${name}\n\n`;
     try {
       await scopedFetch('/push', {
         method: 'POST',
-        body: JSON.stringify({ file, content: `# ${file.replace(/\.md$/, '').split('/').pop()}\n\n` }),
+        body: JSON.stringify({ file, content }),
       });
       setNewFile('');
       refresh();
@@ -76,7 +81,7 @@ export function IndexPage() {
   }
 
   async function uploadFiles(mdFiles: { file: File; path: string }[]) {
-    if (mdFiles.length === 0) { toast('No se encontraron archivos .md', 'error'); return; }
+    if (mdFiles.length === 0) { toast('No se encontraron archivos .md, .mdx o .html', 'error'); return; }
     setUploadProgress(`Leyendo ${mdFiles.length} archivos...`);
     const readFiles = await Promise.all(
       mdFiles.map(async ({ file, path }) => ({ path, content: await file.text() }))
@@ -100,7 +105,7 @@ export function IndexPage() {
     if (!fileList) return;
     const mdFiles: { file: File; path: string }[] = [];
     for (const file of Array.from(fileList)) {
-      if (file.name.endsWith('.md')) mdFiles.push({ file, path: file.name });
+      if (isDocFile(file.name)) mdFiles.push({ file, path: file.name });
     }
     uploadFiles(mdFiles);
   }
@@ -109,7 +114,7 @@ export function IndexPage() {
     if (!fileList) return;
     const mdFiles: { file: File; path: string }[] = [];
     for (const file of Array.from(fileList)) {
-      if (!file.name.endsWith('.md')) continue;
+      if (!isDocFile(file.name)) continue;
       mdFiles.push({ file, path: file.webkitRelativePath || file.name });
     }
     uploadFiles(mdFiles);
@@ -121,7 +126,7 @@ export function IndexPage() {
         return new Promise<void>((resolve) => {
           (entry as FileSystemFileEntry).file((file) => {
             const path = basePath ? `${basePath}/${file.name}` : file.name;
-            if (file.name.endsWith('.md')) result.push({ file, path });
+            if (isDocFile(file.name)) result.push({ file, path });
             resolve();
           });
         });
@@ -222,14 +227,14 @@ export function IndexPage() {
         <>
           <div className="new-doc-form">
             <form onSubmit={handleCreate}>
-              <input type="text" value={newFile} onChange={(e) => setNewFile(e.target.value)} placeholder="nombre.md o carpeta/nombre.md" required />
+              <input type="text" value={newFile} onChange={(e) => setNewFile(e.target.value)} placeholder="nombre.md, nombre.mdx o carpeta/nombre.html" required />
               <button type="submit">Crear documento</button>
             </form>
           </div>
 
           <div className="upload-actions">
             <label className="upload-btn file-btn">
-              <input type="file" accept=".md" multiple style={{ display: 'none' }} onChange={(e) => handleFileSelect(e.target.files)} />
+              <input type="file" accept=".md,.mdx,.html" multiple style={{ display: 'none' }} onChange={(e) => handleFileSelect(e.target.files)} />
               <span className="upload-icon">&#128196;</span> Subir Archivos
             </label>
             <label className="upload-btn folder-btn">
@@ -245,7 +250,7 @@ export function IndexPage() {
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
           >
-            <p>O arrastra archivos .md / carpetas aca</p>
+            <p>O arrastra archivos .md, .mdx, .html o carpetas aca</p>
           </div>
 
           {uploadProgress && (

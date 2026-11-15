@@ -1,3 +1,4 @@
+import { isMarkdownKind, stripDocExt } from '@shared/doc-types';
 import { useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -87,10 +88,10 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   }
 
   const recentFiles = recents();
-  const displayName = (file: string) => file.replace(/\.md$/i, '').split('/').pop() ?? file;
+  const displayName = (file: string) => stripDocExt(file).split('/').pop() ?? file;
 
   return (
-    <aside className={`${s.sidebar}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
+    <aside data-noprint className={`${s.sidebar}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
       <div className={s.sidebarHeader}>
         <div className={s.sidebarLogo}>
           <div className={s.sidebarLogoIcon}><span>M</span></div>
@@ -264,7 +265,7 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         >
           <FileIcon />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {item.name.replace(/\.md$/i, '')}
+            {stripDocExt(item.name)}
           </span>
         </button>
       );
@@ -275,7 +276,7 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const editUrl = currentPage ? `${urlPrefix}/edit/${currentPage}` : '';
 
   return (
-    <aside className={`${s.sidebar} ${s.sidebarProject}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
+    <aside data-noprint className={`${s.sidebar} ${s.sidebarProject}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
       <div className={s.sidebarHeader}>
         <div className={s.sidebarLogo}>
           <FolderIcon size={16} />
@@ -328,7 +329,7 @@ function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClic
   onClick: () => void;
   indent?: boolean;
 }) {
-  const isMarkdown = file.endsWith('.md');
+  const isMarkdown = isMarkdownKind(file);
   return (
     <button
       className={`${s.sidebarItem}${active ? ` ${s.active}` : ''}`}

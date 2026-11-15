@@ -50,10 +50,23 @@ async function doFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new ApiError(res.status, text);
   }
 
   return (await res.json()) as T;
+}
+
+/** A non-2xx response; `body` is the parsed JSON body when there is one. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: Record<string, unknown> | null;
+  constructor(status: number, text: string) {
+    super(`API ${status}: ${text}`);
+    this.status = status;
+    let body: Record<string, unknown> | null = null;
+    try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* not JSON */ }
+    this.body = body;
+  }
 }
 
 export function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -74,11 +87,15 @@ export function apiFetchScoped<T>(
   init?: RequestInit,
   anonymous = false,
 ): Promise<T> {
+  return doFetch<T>(scopedUrl(path, scope, anonymous), init);
+}
+
+/** URL of a scoped endpoint, for links, downloads and iframes. */
+export function scopedUrl(path: string, scope: Scope, anonymous = false): string {
   if (scope.kind === 'public' && anonymous) {
-    return apiFetchPublic<T>(scope.org, path, init);
+    return `${PUBLIC_BASE}/${encodeURIComponent(scope.org)}${path}`;
   }
   const param = scopeToQueryParam(scope);
   const sep = path.includes('?') ? '&' : '?';
-  const url = `${BASE}${path}${sep}scope=${encodeURIComponent(param)}`;
-  return doFetch<T>(url, init);
+  return `${BASE}${path}${sep}scope=${encodeURIComponent(param)}`;
 }

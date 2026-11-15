@@ -1,14 +1,16 @@
-import { scopeToQueryParam } from '@shared/api';
 import { DocFrame } from '../components/DocFrame';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
-import { useScope, useScopedFetch, useScopeOrg } from '../hooks/useScope';
+import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/useScope';
+import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
+import { HtmlFrame } from '../components/HtmlFrame';
+import { isMarkdownKind } from '@shared/doc-types';
 import { useNavStore } from '../hooks/useNavStore';
-import { Toolbar, type ToolbarAction } from '../components/Toolbar';
-import DOMPurify from 'dompurify';
+import { Toolbar, type ToolbarAction, type ToolbarItem } from '../components/Toolbar';
+import { sanitizeDocHtml } from '../sanitize';
 import type { RenderResponse, Comment } from '@shared/types';
 
 declare const hljs: { highlightAll: () => void };
@@ -21,6 +23,9 @@ export function DocPage() {
   const { scope, urlPrefix, id: scopeId } = useScope();
   const org = useScopeOrg();
   const scopedFetch = useScopedFetch();
+  const scopedUrl = useScopedUrl();
+  const copyTargets = useCopyTargets();
+  const [copying, setCopying] = useState(false);
   const { isAuthenticated, role } = useAuth();
   const docRef = useRef<HTMLDivElement>(null);
 
@@ -86,7 +91,7 @@ export function DocPage() {
     if (!docRef.current || !data) return;
     // Clean previous indicators
     docRef.current.querySelectorAll('.doc-comment-indicator').forEach((el) => el.remove());
-    docRef.current.querySelectorAll('.doc-comment-block').forEach((el) => el.remove());
+    docRef.current.querySelectorAll('.doc-comment-add').forEach((el) => el.remove());
     docRef.current.querySelectorAll('[data-source-line]').forEach((el) => {
       el.classList.remove('has-inline-comments', 'comment-active-block');
     });
@@ -96,6 +101,8 @@ export function DocPage() {
       const line = parseInt(el.getAttribute('data-source-line') || '0', 10);
       const lineEnd = parseInt(el.getAttribute('data-source-line-end') || '0', 10);
       if (!line) return;
+      // Code fences carry the line on <code>; buttons placed there become text once highlight.js re-renders it.
+      const host = el.tagName === 'CODE' && el.parentElement?.tagName === 'PRE' ? el.parentElement : el;
 
       // Find comments that fall within this block's line range
       const blockComments: Comment[] = [];
@@ -114,8 +121,8 @@ export function DocPage() {
           e.stopPropagation();
           setActiveBlock((prev) => (prev === line ? null : line));
         });
-        el.style.position = 'relative';
-        el.appendChild(badge);
+        host.style.position = 'relative';
+        host.appendChild(badge);
       }
 
       // Commentable block hover handler
@@ -130,8 +137,8 @@ export function DocPage() {
             e.stopPropagation();
             setActiveBlock((prev) => (prev === line ? null : line));
           });
-          el.style.position = 'relative';
-          el.appendChild(addBtn);
+          host.style.position = 'relative';
+          host.appendChild(addBtn);
         }
       }
 
@@ -248,28 +255,56 @@ export function DocPage() {
   const sourceUrl = `${urlPrefix}/source/${file}`;
   const commentLabel = `Codigo fuente${data?.commentCount ? ` (${data.commentCount})` : ''}`;
 
+  const fileParam = `?file=${encodeURIComponent(file)}`;
+  const markdownLike = isMarkdownKind(file);
   const actions: ToolbarAction[] = [
     { label: 'Volver', href: urlPrefix },
     { label: commentLabel, href: sourceUrl },
   ];
 
   if (canWrite) {
-    const scopeParam = scopeToQueryParam(scope);
     actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true });
-    if (role === 'admin' && scope.kind !== 'public') {
-      actions.push({ label: 'Publicar', onClick: () => handlePublish(false), className: 'action-btn publish-btn' });
-    }
-    actions.push({ label: 'Descargar', onClick: () => (window.location.href = `/api/download?scope=${encodeURIComponent(scopeParam)}&file=${encodeURIComponent(file)}`), className: 'action-btn download-btn' });
+    actions.push({ label: 'Historial', href: `${urlPrefix}/history/${file}` });
+  }
+  const exportItems: ToolbarItem[] = [];
+  if (markdownLike) {
+    exportItems.push({ label: 'PDF', onClick: () => window.print() });
+    exportItems.push({ label: 'Word', onClick: () => (window.location.href = scopedUrl(`/export/docx${fileParam}`)) });
+  }
+  if (canWrite) {
+    exportItems.push({ label: 'Archivo original', onClick: () => (window.location.href = scopedUrl(`/download${fileParam}`)) });
+  }
+  actions.push({ label: 'Exportar', menu: exportItems });
+  const shareItems: ToolbarItem[] = [];
+  if (isAuthenticated && copyTargets.length > 0) {
+    shareItems.push({ label: 'Copiar a equipo', onClick: () => setCopying(true) });
+  }
+  if (canWrite && role === 'admin' && scope.kind !== 'public') {
+    shareItems.push({ label: 'Publicar en Publicos', onClick: () => handlePublish(false) });
+  }
+  actions.push({ label: 'Compartir', menu: shareItems });
+  if (canWrite) {
     actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
   }
+  const origin = data?.origin;
 
   return (
     <div className="container">
       <Toolbar actions={actions} />
+      {copying && <CopyToTeam file={file} onClose={() => setCopying(false)} />}
+      {origin && (
+        <p className="doc-origin">
+          Copiado de {origin.fromLabel}{origin.by ? ` por ${origin.by}` : ''} el {new Date(origin.at).toLocaleDateString('es-AR')}
+        </p>
+      )}
       <div className="doc-with-comments">
-        <DocFrame org={org}>
-          <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data?.html || '') }} />
-        </DocFrame>
+        {data?.kind === 'html' ? (
+          <HtmlFrame src={scopedUrl(`/frame${fileParam}`)} title={file} />
+        ) : (
+          <DocFrame org={org}>
+            <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(data?.html || '') }} />
+          </DocFrame>
+        )}
         {activeBlock != null && (
           <div className="inline-comment-panel">
             <div className="inline-comment-header">

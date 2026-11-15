@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { md } from '../lib/config.js';
+import { renderDoc, sendHtmlFrame } from '../lib/render.js';
+import { sendDocx } from '../lib/docx.js';
+import { docKind } from '../../shared/doc-types.js';
 import { join } from 'path';
 import { resolveDoc, getFiles, publicScope, ScopeError, orgDir } from '../lib/storage.js';
 import { getOrgBrand, LOGO_MIME } from '../lib/design.js';
@@ -75,9 +77,30 @@ router.get('/render', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
-  const html = md.render(content);
+  const { kind, html } = renderDoc(file, content);
   const { data: comments, total: commentCount } = await getComments(scope.id, file);
-  res.json({ html, comments, commentCount });
+  res.json({ kind, html, comments, commentCount });
+}));
+
+router.get('/export/docx', ah(async (req, res) => {
+  const scope = orgPublic(req, res);
+  if (!scope) return;
+  await sendDocx(res, scope, queryString(req.query['file']));
+}));
+
+// Raw HTML document, isolated by a CSP sandbox (shown by the client inside an iframe).
+router.get('/frame', ah(async (req, res) => {
+  const scope = orgPublic(req, res);
+  if (!scope) return;
+  const file = queryString(req.query['file']);
+  if (!file || docKind(file) !== 'html') return res.status(400).json({ error: 'Solo documentos .html' });
+  const filePath = resolveDoc(file, scope.basePath);
+  if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  try { sendHtmlFrame(res, await readDocFile(filePath)); }
+  catch (err) {
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
+    throw err;
+  }
 }));
 
 // Project data (tree + initial page)
@@ -103,10 +126,10 @@ router.get('/project', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
-  const html = md.render(content);
+  const { kind, html } = renderDoc(mainPage, content);
   const allPages = flattenTree(tree);
 
-  res.json({ tree, html, currentFile: mainPage, allPages });
+  res.json({ tree, kind, html, currentFile: mainPage, allPages });
 }));
 
 // Pull raw content of a public doc
@@ -153,8 +176,8 @@ router.get('/project/render', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'No encontrado' });
     throw err;
   }
-  const rendered = md.render(content);
-  res.json({ html: rendered, file: page });
+  const { kind, html } = renderDoc(page, content);
+  res.json({ kind, html, file: page });
 }));
 
 export default router;

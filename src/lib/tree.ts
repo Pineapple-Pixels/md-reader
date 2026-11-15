@@ -1,6 +1,7 @@
 import { readdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { isDocFile, stripDocExt } from '../../shared/doc-types.js';
 
 export type FolderNode = {
   type: 'folder';
@@ -29,8 +30,8 @@ export async function buildTree(dir: string, base = ''): Promise<TreeNode[]> {
       if (children.length > 0) {
         items.push({ type: 'folder', name: entry.name, path: rel, children });
       }
-    } else if (entry.name.endsWith('.md')) {
-      items.push({ type: 'file', name: entry.name.replace(/\.md$/, ''), path: rel });
+    } else if (isDocFile(entry.name)) {
+      items.push({ type: 'file', name: stripDocExt(entry.name), path: rel });
     }
   }
   items.sort((a, b) => {

@@ -37,6 +37,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
+      // Every app form submits through fetch; a native submission can only come from injected markup.
+      formAction: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
       scriptSrc: ["'self'", THEME_SCRIPT_HASH, 'https://cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
@@ -49,7 +51,6 @@ app.use(helmet({
 app.use(staticAssets('public', process.env['NODE_ENV'] === 'production'));
 
 app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // Rate limiters
@@ -280,6 +281,10 @@ app.post('/api/comments', commentLimiter);
 // Rate limit file write operations
 app.post('/api/push', writeLimiter);
 app.post('/api/save', writeLimiter);
+app.post('/api/share', writeLimiter);
+app.post('/api/versions/restore', writeLimiter);
+app.get('/api/export/docx', writeLimiter);
+app.get('/api/public/:org/export/docx', writeLimiter);
 app.delete('/api/delete', writeLimiter);
 
 // Public API routes (no auth, rate limited)

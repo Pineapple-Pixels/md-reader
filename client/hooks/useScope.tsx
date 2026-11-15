@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import {
   apiFetchScoped,
+  scopedUrl,
   scopeId,
   type Scope,
 } from '@shared/api';
@@ -68,4 +69,12 @@ export function useScopedFetch() {
       apiFetchScoped<T>(path, scope, init, anonymous),
     [scope, anonymous],
   );
+}
+
+/** Builds URLs of scoped endpoints (downloads, iframes) with the same public/anonymous rule as useScopedFetch. */
+export function useScopedUrl() {
+  const { scope } = useScope();
+  const { isAuthenticated } = useAuth();
+  const anonymous = scope.kind === 'public' && !isAuthenticated;
+  return useCallback((path: string) => scopedUrl(path, scope, anonymous), [scope, anonymous]);
 }

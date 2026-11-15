@@ -1,142 +1,224 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '@shared/api';
+import type { PullResponse } from '@shared/types';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar } from '../components/Toolbar';
 
+type Draft = { content: string; baseHash: string; savedAt: string };
+type Conflict = 'changed' | 'deleted';
+
+function readDraft(key: string): Draft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<Draft>;
+    return typeof d.content === 'string' && typeof d.baseHash === 'string' && typeof d.savedAt === 'string' ? (d as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(key: string, draft: Draft): void {
+  try { localStorage.setItem(key, JSON.stringify(draft)); } catch { /* storage full or blocked */ }
+}
+
+function clearDraft(key: string): void {
+  try { localStorage.removeItem(key); } catch { /* blocked */ }
+}
+
 export function EditorPage() {
   const location = useLocation();
+  const { urlPrefix, id: scopeId } = useScope();
+  const file = decodeURIComponent(location.pathname.replace(`${urlPrefix}/edit/`, ''));
+  // A fresh editor per document: no state (text, hash, draft) can carry over from another one.
+  return <Editor key={`${scopeId}:${file}`} file={file} />;
+}
+
+function Editor({ file }: { file: string }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { urlPrefix, id: scopeId } = useScope();
   const scopedFetch = useScopedFetch();
 
-  const editPrefix = `${urlPrefix}/edit/`;
-  const file = decodeURIComponent(location.pathname.replace(editPrefix, ''));
+  const draftKey = `draft:${scopeId}:${file}`;
+  const docUrl = `${urlPrefix}/doc/${file}`;
 
   const openTab = useNavStore((s) => s.openTab);
   useEffect(() => { openTab(file); }, [file, openTab]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['doc-raw', scopeId, file],
-    queryFn: () => scopedFetch<{ file: string; content: string }>(`/pull?file=${encodeURIComponent(file)}`),
+    queryFn: () => scopedFetch<PullResponse>(`/pull?file=${encodeURIComponent(file)}`),
+    // Always the server copy as of opening the editor: its hash is what Guardar checks against.
+    gcTime: 0,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
-  const [content, setContent] = useState('');
-  const [saveStatus, setSaveStatus] = useState('');
-  const [statusColor, setStatusColor] = useState('var(--text-muted)');
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `content` is null until initialized; it never follows later refetches.
+  const [content, setContent] = useState<string | null>(null);
+  const [savedContent, setSavedContent] = useState('');
+  const [baseHash, setBaseHash] = useState('');
+  const [pendingDraft, setPendingDraft] = useState<Draft | null>(null);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const initialized = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Live refs so doSave doesn't go stale between renders. Using state here caused
-  // manual Ctrl+S to be dropped while an auto-save was in flight.
-  const savingRef = useRef(false);
-  const pendingSaveRef = useRef<{ redirect: boolean } | null>(null);
-  const contentRef = useRef('');
 
   useEffect(() => {
-    if (data?.content !== undefined) setContent(data.content);
-  }, [data?.content]);
+    if (!data || initialized.current) return;
+    initialized.current = true;
+    setContent(data.content);
+    setSavedContent(data.content);
+    setBaseHash(data.hash);
+    const draft = readDraft(draftKey);
+    if (draft && draft.content !== data.content) setPendingDraft(draft);
+    else if (draft) clearDraft(draftKey);
+  }, [data, draftKey]);
 
-  useEffect(() => { contentRef.current = content; }, [content]);
+  const dirty = content !== null && content !== savedContent;
 
-  // Reset auto-save state cuando cambia el archivo — evita que un timer pendiente
-  // sobreescriba el nuevo archivo con el contenido del anterior.
+  // Every change goes to the local draft right away, so leaving the editor at any moment loses nothing.
+  // Never touched while a recovery offer is open.
   useEffect(() => {
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = null;
-    pendingSaveRef.current = null;
-    savingRef.current = false;
-    contentRef.current = '';
-    setContent('');
-    setSaveStatus('');
-  }, [file]);
+    if (content === null || pendingDraft) return;
+    if (dirty) writeDraft(draftKey, { content, baseHash, savedAt: new Date().toISOString() });
+    else clearDraft(draftKey);
+  }, [content, dirty, baseHash, draftKey, pendingDraft]);
 
-  const doSave = useCallback(async (redirect: boolean): Promise<void> => {
-    if (savingRef.current) {
-      pendingSaveRef.current = { redirect: pendingSaveRef.current?.redirect || redirect };
-      return;
-    }
-    savingRef.current = true;
-    setSaveStatus('Guardando...');
-    setStatusColor('var(--text-muted)');
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  const save = useCallback(async (force = false) => {
+    if (content === null || saving || (!dirty && !force)) return;
+    const sent = content;
+    setSaving(true);
     try {
-      const res = await scopedFetch<{ ok: boolean }>('/save', {
+      const res = await scopedFetch<{ ok: boolean; hash: string }>('/save', {
         method: 'POST',
-        body: JSON.stringify({ file, content: contentRef.current }),
+        body: JSON.stringify({ file, content: sent, baseHash, force }),
       });
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
-        queryClient.invalidateQueries({ queryKey: ['search-index', scopeId] });
-        if (redirect) {
-          toast('Documento guardado', 'success');
-          navigate(`${urlPrefix}/doc/${file}`);
-          savingRef.current = false;
-          return;
-        }
-        setSaveStatus('Guardado');
-        setStatusColor('#16a34a');
-        toast('Guardado automatico', 'success');
-      }
-    } catch {
-      setSaveStatus('Error al guardar');
-      setStatusColor('var(--danger)');
-      toast('Error al guardar', 'error');
+      setBaseHash(res.hash);
+      setSavedContent(sent);
+      setConflict(null);
+      setJustSaved(true);
+      clearDraft(draftKey);
+      queryClient.setQueryData<PullResponse>(['doc-raw', scopeId, file], { file, content: sent, hash: res.hash });
+      queryClient.invalidateQueries({ queryKey: ['doc', scopeId, file] });
+      queryClient.invalidateQueries({ queryKey: ['versions', scopeId, file] });
+      queryClient.invalidateQueries({ queryKey: ['search-index', scopeId] });
+      toast('Documento guardado', 'success');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) setConflict(err.body?.['deleted'] ? 'deleted' : 'changed');
+      else toast('Error al guardar. Tus cambios siguen en el editor.', 'error');
     }
-    savingRef.current = false;
-    const pending = pendingSaveRef.current;
-    pendingSaveRef.current = null;
-    if (pending) doSave(pending.redirect);
-  }, [file, navigate, toast, scopedFetch, queryClient, scopeId, urlPrefix]);
+    setSaving(false);
+  }, [content, saving, dirty, scopedFetch, file, baseHash, draftKey, queryClient, scopeId, toast]);
 
-  function handleChange(value: string) {
-    setContent(value);
-    setSaveStatus('Sin guardar...');
-    setStatusColor('#d97706');
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => doSave(false), 2000);
+  async function loadLatest() {
+    try {
+      const latest = await scopedFetch<PullResponse>(`/pull?file=${encodeURIComponent(file)}`);
+      queryClient.setQueryData(['doc-raw', scopeId, file], latest);
+      setContent(latest.content);
+      setSavedContent(latest.content);
+      setBaseHash(latest.hash);
+      setConflict(null);
+      clearDraft(draftKey);
+    } catch {
+      toast('No se pudo cargar la ultima version', 'error');
+    }
+  }
+
+  function recoverDraft() {
+    if (!pendingDraft) return;
+    setContent(pendingDraft.content);
+    // Saving checks against what the draft was based on, so a newer server copy is a conflict.
+    setBaseHash(pendingDraft.baseHash);
+    setPendingDraft(null);
+  }
+
+  function discardDraft() {
+    clearDraft(draftKey);
+    setPendingDraft(null);
+  }
+
+  function leave() {
+    if (dirty && !confirm('Tenes cambios sin guardar. Quedan como borrador en este navegador. Salir igual?')) return;
+    navigate(docUrl);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Tab') {
       e.preventDefault();
-      const textarea = textareaRef.current!;
-      const start = textarea.selectionStart;
-      const newValue = content.substring(0, start) + '  ' + content.substring(textarea.selectionEnd);
-      setContent(newValue);
-      requestAnimationFrame(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + 2;
-      });
+      const ta = textareaRef.current!;
+      const start = ta.selectionStart;
+      setContent((c) => (c ?? '').substring(0, start) + '  ' + (c ?? '').substring(ta.selectionEnd));
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      doSave(true);
+      if (dirty) void save();
     }
   }
 
   if (isLoading) return <div className="container"><p style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando...</p></div>;
+  if (error) return <div className="container"><p style={{ color: 'var(--danger)' }}>No se pudo abrir el documento.</p></div>;
+
+  const status = saving ? 'Guardando...' : dirty ? 'Cambios sin guardar' : justSaved ? 'Guardado' : '';
+  const statusColor = dirty ? '#d97706' : justSaved ? '#16a34a' : 'var(--text-muted)';
 
   return (
     <div className="container">
       <Toolbar
         actions={[
-          { label: 'Volver', href: urlPrefix },
-          { label: 'Ver renderizado', href: `${urlPrefix}/doc/${file}` },
-          { label: 'Guardar', onClick: () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); doSave(true); }, primary: true },
+          { label: 'Volver al documento', onClick: leave },
+          { label: saving ? 'Guardando...' : 'Guardar', onClick: () => void save(), primary: true },
         ]}
       >
-        <span style={{ fontSize: 13, color: statusColor, alignSelf: 'center', marginLeft: 4 }}>{saveStatus}</span>
+        <span role="status" style={{ fontSize: 13, color: statusColor, alignSelf: 'center', marginLeft: 4 }}>{status}</span>
       </Toolbar>
+
+      {pendingDraft && (
+        <div className="editor-banner" role="alert">
+          <span>Tenes un borrador sin guardar del {new Date(pendingDraft.savedAt).toLocaleString('es-AR')}.</span>
+          <button className="primary" onClick={recoverDraft}>Recuperar borrador</button>
+          <button onClick={discardDraft}>Descartar</button>
+        </div>
+      )}
+
+      {conflict === 'changed' && (
+        <div className="editor-banner warn" role="alert">
+          <span>Alguien guardo otra version mientras editabas. Tus cambios siguen aca.</span>
+          <button className="primary" onClick={() => void save(true)}>Guardar igual (la otra queda en el historial)</button>
+          <button onClick={() => { if (confirm('Se pierden tus cambios. Continuar?')) void loadLatest(); }}>Descartar lo mio y cargar la ultima</button>
+        </div>
+      )}
+      {conflict === 'deleted' && (
+        <div className="editor-banner warn" role="alert">
+          <span>El documento fue eliminado mientras editabas. Tus cambios siguen aca.</span>
+          <button className="primary" onClick={() => void save(true)}>Volver a crearlo con lo mio</button>
+        </div>
+      )}
+
       <div className="editor-wrap">
         <textarea
           ref={textareaRef}
           id="editor"
-          value={content}
-          onChange={(e) => handleChange(e.target.value)}
+          aria-label="Contenido del documento"
+          value={content ?? ''}
+          onChange={(e) => { setContent(e.target.value); setJustSaved(false); }}
           onKeyDown={handleKeyDown}
+          disabled={content === null}
         />
       </div>
     </div>

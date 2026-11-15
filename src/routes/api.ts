@@ -4,12 +4,20 @@ import { readFile, writeFile, unlink, rm } from 'fs/promises';
 import { dirname } from 'path';
 import archiver from 'archiver';
 import { z } from 'zod';
-import { md } from '../lib/config.js';
+import { renderDoc, sendHtmlFrame } from '../lib/render.js';
+import { sendDocx } from '../lib/docx.js';
+import { copyDocs, deleteOrigins, getOrigin, isSafeRelPath } from '../lib/share.js';
+import { docKind } from '../../shared/doc-types.js';
 import {
   resolveDoc,
   getFiles,
   ensureDir,
   saveVersion,
+  listVersions,
+  readVersion,
+  contentHash,
+  withFileLock,
+  writeDocAtomic,
   isWritableDocPath,
   resolveScope,
   publicScope,
@@ -45,6 +53,26 @@ const FileContentBody = z.object({
 
 const FileBody = z.object({
   file: z.string().min(1),
+});
+
+const SaveBody = z.object({
+  file: z.string().min(1),
+  content: z.string(),
+  /** Hash of the content the editor started from (from /pull); a mismatch means someone else saved. */
+  baseHash: z.string().regex(/^[a-f0-9]{64}$/),
+  force: z.boolean().optional(),
+});
+
+const ShareBody = z.object({
+  file: z.string().min(1),
+  /** Slug of the destination team. */
+  to: z.string().min(1),
+  overwrite: z.boolean().optional(),
+});
+
+const RestoreBody = z.object({
+  file: z.string().min(1),
+  id: z.string().min(1),
 });
 
 const CommentBody = z.object({
@@ -108,6 +136,22 @@ function assertWritable(scope: ResolvedScope, res: Response): boolean {
   return true;
 }
 
+async function readOrNull(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, 'utf-8');
+  } catch (err) {
+    if (isEnoent(err)) return null;
+    throw err;
+  }
+}
+
+/** Absolute path of a writable doc path inside the scope, or null after sending a 400. */
+function writableDocPath(file: string | null | undefined, scope: ResolvedScope, res: Response): string | null {
+  const filePath = file && isWritableDocPath(file) ? resolveDoc(file, scope.basePath) : null;
+  if (!filePath) res.status(400).json({ error: 'Ruta invalida' });
+  return filePath;
+}
+
 // Search index
 router.get('/search-index', ah(async (req, res) => {
   const scope = getScope(req, res);
@@ -138,12 +182,33 @@ router.get('/render', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'Archivo no encontrado' });
     throw err;
   }
-  const html = md.render(content);
-  const { data: comments, total: commentCount } = await getComments(scope.id, file);
-  res.json({ html, comments, commentCount, canWrite: scope.canWrite, canComment: scope.canComment });
+  const { kind, html } = renderDoc(file, content);
+  const [{ data: comments, total: commentCount }, origin] = await Promise.all([getComments(scope.id, file), getOrigin(scope.id, file)]);
+  res.json({ kind, html, comments, commentCount, canWrite: scope.canWrite, canComment: scope.canComment, origin });
 }));
 
-// Download doc (file) or project (folder → .zip with all .md files)
+router.get('/export/docx', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  await sendDocx(res, scope, queryString(req.query['file']));
+}));
+
+// Raw HTML document, isolated by a CSP sandbox (shown by the client inside an iframe).
+router.get('/frame', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  const file = queryString(req.query['file']);
+  if (!file || docKind(file) !== 'html') return res.status(400).json({ error: 'Solo documentos .html' });
+  const filePath = resolveDoc(file, scope.basePath);
+  if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
+  try { sendHtmlFrame(res, await readDocFile(filePath)); }
+  catch (err) {
+    if (err instanceof NotFileError) return res.status(404).json({ error: 'Archivo no encontrado' });
+    throw err;
+  }
+}));
+
+// Download doc (file) or project (folder → .zip with all its docs)
 router.get('/download', ah(async (req, res) => {
   const scope = getScope(req, res);
   if (!scope) return;
@@ -154,7 +219,7 @@ router.get('/download', ah(async (req, res) => {
   const stats = await statOrNull(filePath);
   if (!stats) return res.status(404).json({ error: 'Archivo no encontrado' });
 
-  // Folder → stream a zip with all .md files preserving structure.
+  // Folder → stream a zip with all docs preserving structure.
   if (stats.isDirectory()) {
     const rawFolder = file.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? 'project';
     const safeFolder = rawFolder.replace(/[^a-zA-Z0-9._-]/g, '') || 'project';
@@ -170,7 +235,7 @@ router.get('/download', ah(async (req, res) => {
       res.destroy(err);
     });
     archive.pipe(res);
-    archive.glob('**/*.md', { cwd: filePath, dot: false }, { prefix: safeFolder });
+    archive.glob('**/*.{md,mdx,html}', { cwd: filePath, dot: false }, { prefix: safeFolder });
     await archive.finalize();
     return;
   }
@@ -185,7 +250,7 @@ router.get('/download', ah(async (req, res) => {
   const rawName = file.split('/').pop();
   const safeName = (rawName ?? '').replace(/[^a-zA-Z0-9._-]/g, '') || 'document.md';
   res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-  res.type('text/markdown').send(content);
+  res.type(docKind(file) === 'html' ? 'application/octet-stream' : 'text/markdown').send(content);
 }));
 
 // Upload/push doc (crear o sobrescribir — usa versionado como backup)
@@ -199,39 +264,89 @@ router.post('/push', ah(async (req, res) => {
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  await ensureDir(dirname(filePath));
-  // Best-effort version backup — missing previous file is fine.
-  try {
-    const old = await readFile(filePath, 'utf-8');
-    await saveVersion(filePath, old, scope.basePath);
-  } catch (err) {
-    if (!isEnoent(err)) throw err;
-  }
-  await writeFile(filePath, content);
+  await withFileLock(filePath, async () => {
+    const old = await readOrNull(filePath);
+    if (old !== null) await saveVersion(filePath, old, scope.basePath);
+    await writeDocAtomic(filePath, content);
+  });
   invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));
 
-// Save doc (with version backup)
+// Save an edited doc. Refuses (409) when the file changed since the editor loaded it,
+// unless `force`; the overwritten content always stays in the history.
 router.post('/save', ah(async (req, res) => {
   const scope = getScope(req, res);
   if (!scope) return;
   if (!assertWritable(scope, res)) return;
-  const parsed = FileContentBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
-  const { file, content } = parsed.data;
+  const parsed = SaveBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file, content y baseHash son requeridos' });
+  const { file, content, baseHash, force } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  try {
-    const old = await readFile(filePath, 'utf-8');
-    await saveVersion(filePath, old, scope.basePath);
-  } catch (err) {
-    if (!isEnoent(err)) throw err;
+  const outcome = await withFileLock(filePath, async () => {
+    const current = await readOrNull(filePath);
+    if (!force && (current === null || contentHash(current) !== baseHash)) {
+      return current === null ? 'deleted' : 'changed';
+    }
+    if (current !== null) await saveVersion(filePath, current, scope.basePath);
+    await writeDocAtomic(filePath, content);
+    return 'saved';
+  });
+  if (outcome !== 'saved') {
+    return res.status(409).json({
+      error: outcome === 'deleted' ? 'El documento fue eliminado mientras editabas' : 'Alguien guardo otra version mientras editabas',
+      conflict: true,
+      deleted: outcome === 'deleted',
+    });
   }
-  await writeFile(filePath, content);
   invalidateSearchIndex(scope.id);
-  res.json({ ok: true });
+  res.json({ ok: true, hash: contentHash(content) });
+}));
+
+// Saved versions of a doc, newest first.
+router.get('/versions', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
+  const filePath = writableDocPath(queryString(req.query['file']), scope, res);
+  if (!filePath) return;
+  res.json(await listVersions(filePath, scope.basePath));
+}));
+
+router.get('/version', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
+  const file = queryString(req.query['file']);
+  const filePath = writableDocPath(file, scope, res);
+  if (!filePath) return;
+  const content = await readVersion(filePath, scope.basePath, queryString(req.query['id']) ?? '');
+  if (content === null) return res.status(404).json({ error: 'Version no encontrada' });
+  res.json({ content, ...renderDoc(file!, content) });
+}));
+
+// Restore a version; the content it replaces becomes a version itself.
+router.post('/versions/restore', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
+  const parsed = RestoreBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'file e id son requeridos' });
+  const filePath = writableDocPath(parsed.data.file, scope, res);
+  if (!filePath) return;
+  const restored = await withFileLock(filePath, async () => {
+    const content = await readVersion(filePath, scope.basePath, parsed.data.id);
+    if (content === null) return null;
+    const current = await readOrNull(filePath);
+    if (current !== null) await saveVersion(filePath, current, scope.basePath);
+    await writeDocAtomic(filePath, content);
+    return content;
+  });
+  if (restored === null) return res.status(404).json({ error: 'Version no encontrada' });
+  invalidateSearchIndex(scope.id);
+  res.json({ ok: true, hash: contentHash(restored) });
 }));
 
 // Pull doc (raw content)
@@ -248,7 +363,7 @@ router.get('/pull', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'Archivo no encontrado' });
     throw err;
   }
-  res.json({ file, content });
+  res.json({ file, content, hash: contentHash(content) });
 }));
 
 // Delete doc or folder
@@ -290,6 +405,7 @@ router.delete('/delete', ah(async (req, res) => {
     await unlink(filePath).catch((err: unknown) => { if (!isEnoent(err)) throw err; });
     await deleteAllComments(scope.id, file);
   }
+  await deleteOrigins(scope.id, file);
   invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));
@@ -307,7 +423,7 @@ router.get('/project', ah(async (req, res) => {
 
   const tree = await buildTree(folderPath, folder);
   const mainPage = findMainPage(tree, folder);
-  if (!mainPage) return res.status(404).json({ error: 'No se encontraron archivos .md' });
+  if (!mainPage) return res.status(404).json({ error: 'No se encontraron documentos' });
 
   const activeFilePath = resolveDoc(mainPage, scope.basePath);
   if (!activeFilePath) return res.status(400).json({ error: 'Ruta invalida' });
@@ -317,10 +433,10 @@ router.get('/project', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'Pagina no encontrada' });
     throw err;
   }
-  const html = md.render(content);
+  const { kind, html } = renderDoc(mainPage, content);
   const allPages = flattenTree(tree);
 
-  res.json({ tree, html, currentFile: mainPage, allPages });
+  res.json({ tree, kind, html, currentFile: mainPage, allPages });
 }));
 
 // Render project page (for SPA navigation within project)
@@ -338,8 +454,8 @@ router.get('/project/render', ah(async (req, res) => {
     if (err instanceof NotFileError) return res.status(404).json({ error: 'Pagina no encontrada' });
     throw err;
   }
-  const rendered = md.render(content);
-  res.json({ html: rendered, file: page });
+  const { kind, html } = renderDoc(page, content);
+  res.json({ kind, html, file: page });
 }));
 
 // Comments
@@ -428,6 +544,38 @@ router.post('/publish', ah(async (req, res) => {
   await writeFile(destPath, content);
   invalidateSearchIndex(pub.id);
   res.json({ ok: true, file });
+}));
+
+// Copy a doc or folder to another team of the user's organization (an independent copy).
+router.post('/share', ah(async (req, res) => {
+  const src = getScope(req, res);
+  if (!src) return;
+  const parsed = ShareBody.safeParse(req.body);
+  if (!parsed.success || !isSafeRelPath(parsed.data.file)) return res.status(400).json({ error: 'file y to son requeridos' });
+  const { file, to, overwrite } = parsed.data;
+  const user = req.user!;
+  if (src.id.split('/')[0] !== user.orgSlug) return res.status(403).json({ error: 'Solo se copia dentro de tu organizacion' });
+  let dest: ResolvedScope;
+  try {
+    dest = resolveScope(`team:${to}`, user);
+  } catch (err) {
+    if (err instanceof ScopeError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+  if (!dest.canWrite) return res.status(403).json({ error: 'No podes escribir en ese equipo' });
+  if (dest.id === src.id) return res.status(400).json({ error: 'El origen y el destino son el mismo equipo' });
+
+  const fromSlug = src.kind === 'team' ? src.id.split('team:')[1] : null;
+  const fromLabel = src.kind === 'me' ? `Documentos de ${user.username}`
+    : src.kind === 'public' ? 'Publicos'
+    : user.teams.find((t) => t.slug.toLowerCase() === fromSlug)?.name ?? fromSlug ?? 'otro equipo';
+  const result = await copyDocs(src, file, dest, { overwrite: overwrite ?? false, fromLabel, byUserId: user.userId });
+  if (result.status === 'not-found') return res.status(404).json({ error: 'No hay documentos para copiar' });
+  if (result.status === 'conflict') {
+    return res.status(409).json({ error: 'Ya existen documentos con ese nombre en el equipo', conflict: true, files: result.files });
+  }
+  invalidateSearchIndex(dest.id);
+  res.json({ ok: true, files: result.files });
 }));
 
 router.post('/comments/delete', ah(async (req, res) => {

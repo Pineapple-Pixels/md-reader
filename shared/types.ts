@@ -1,5 +1,7 @@
 /** Shared types between server and client */
 
+import type { DocKind } from './doc-types.js';
+
 export interface Paginated<T> {
   data: T[];
   total: number;
@@ -48,17 +50,36 @@ export interface AuthResponse {
   google?: boolean;
 }
 
+export interface DocOrigin {
+  fromLabel: string;
+  fromPath: string;
+  /** Username of who copied it; null when that account no longer exists. */
+  by: string | null;
+  at: string;
+}
+
 export interface RenderResponse {
+  kind: DocKind;
+  /** Empty for HTML documents, which are shown through the sandboxed frame endpoint. */
   html: string;
   comments: Comment[];
   commentCount: number;
   canWrite?: boolean;
   canComment?: boolean;
+  origin?: DocOrigin | null;
 }
 
 export interface PullResponse {
   file: string;
   content: string;
+  /** sha256 of `content`; sent back as `baseHash` when saving. */
+  hash: string;
+}
+
+export interface VersionEntry {
+  id: string;
+  savedAt: string;
+  size: number;
 }
 
 export interface FileEntry {

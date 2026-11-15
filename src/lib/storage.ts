@@ -1,7 +1,9 @@
-import { readdir, writeFile, mkdir, stat, rename } from 'fs/promises';
-import { join, basename, resolve, sep } from 'path';
+import { readdir, readFile, writeFile, mkdir, stat, rename, rm } from 'fs/promises';
+import { createHash, randomBytes } from 'crypto';
+import { join, basename, dirname, extname, relative, resolve, sep } from 'path';
 import { existsSync } from 'fs';
 import { STORAGE_DIR } from './config.js';
+import { isDocFile } from '../../shared/doc-types.js';
 import type { AuthUser } from './auth.js';
 
 export type FileEntry = {
@@ -136,13 +138,13 @@ export function resolveDoc(file: string, basePath: string): string | null {
   return resolved;
 }
 
-// Valida que `file` sea un path de doc escribible: extension .md y sin segmentos
+// Valida que `file` sea un path de doc escribible: extension de doc y sin segmentos
 // vacios/traversal/ocultos. La resolucion read-only (resolveDoc) es mas permisiva
 // para que leer metadatos internos siga funcionando.
 export function isWritableDocPath(file: unknown): file is string {
   if (typeof file !== 'string' || !file) return false;
   if (file.includes('\0')) return false;
-  if (!file.endsWith('.md')) return false;
+  if (!isDocFile(file)) return false;
   const segments = file.split(/[/\\]/);
   if (segments.some((s) => !s || s === '..' || s.startsWith('.'))) return false;
   return true;
@@ -152,7 +154,7 @@ export async function ensureDir(dir: string): Promise<void> {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }
 
-// Lista recursivamente todos los .md bajo `dir`. `base` es el prefijo relativo
+// Lista recursivamente todos los docs bajo `dir`. `base` es el prefijo relativo
 // que se acumula en los nombres retornados. Skipea archivos ocultos (empiezan
 // con punto) para no exponer .comments/.versions.
 export async function getFiles(dir: string, base = ''): Promise<FileEntry[]> {
@@ -164,7 +166,7 @@ export async function getFiles(dir: string, base = ''): Promise<FileEntry[]> {
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       files = files.concat(await getFiles(join(dir, entry.name), rel));
-    } else if (entry.name.endsWith('.md')) {
+    } else if (isDocFile(entry.name)) {
       const stats = await stat(join(dir, entry.name));
       files.push({ name: rel, modified: stats.mtime });
     }
@@ -172,16 +174,75 @@ export async function getFiles(dir: string, base = ''): Promise<FileEntry[]> {
   return files.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
-// Guarda una copia versionada del archivo bajo `<scope>/.versions/<name>/<ts>.md`.
-// `filePath` es el path absoluto al archivo; `basePath` es el scope.basePath.
+// Versions live under `<scope>/.versions/<encoded relative path>/<timestamp><ext>`,
+// so two docs with the same name in different folders never share a history.
+const VERSION_ID_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.(md|mdx|html)$/;
+
+function versionsDir(filePath: string, basePath: string): string {
+  const rel = relative(basePath, filePath).split(sep).join('/');
+  return join(basePath, '.versions', encodeURIComponent(rel));
+}
+
 export async function saveVersion(
   filePath: string,
   content: string,
   basePath: string,
 ): Promise<void> {
-  const name = basename(filePath, '.md');
-  const versionsDir = join(basePath, '.versions', name);
-  await ensureDir(versionsDir);
+  const dir = versionsDir(filePath, basePath);
+  await ensureDir(dir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  await writeFile(join(versionsDir, `${timestamp}.md`), content);
+  await writeFile(join(dir, `${timestamp}${extname(filePath).toLowerCase()}`), content);
+}
+
+export type VersionEntry = { id: string; savedAt: string; size: number };
+
+export async function listVersions(filePath: string, basePath: string): Promise<VersionEntry[]> {
+  const dir = versionsDir(filePath, basePath);
+  if (!existsSync(dir)) return [];
+  const names = (await readdir(dir)).filter((n) => VERSION_ID_RE.test(n)).sort().reverse();
+  return Promise.all(names.map(async (id) => {
+    const st = await stat(join(dir, id));
+    return { id, savedAt: st.mtime.toISOString(), size: st.size };
+  }));
+}
+
+/** Content of one version, or null when the id is malformed or missing. */
+export async function readVersion(filePath: string, basePath: string, id: string): Promise<string | null> {
+  if (!VERSION_ID_RE.test(id)) return null;
+  try {
+    return await readFile(join(versionsDir(filePath, basePath), id), 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+export function contentHash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+const fileLocks = new Map<string, Promise<unknown>>();
+
+/** Runs `fn` after every earlier call for the same path has finished. */
+// shortcut: in-process lock, assumes a single server instance; move to a DB/advisory lock if it scales out.
+export function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+  const prev = fileLocks.get(filePath) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => undefined);
+  fileLocks.set(filePath, tail);
+  void tail.then(() => { if (fileLocks.get(filePath) === tail) fileLocks.delete(filePath); });
+  return run;
+}
+
+/** Writes through a hidden temp file + rename, so readers never see a half-written doc. */
+export async function writeDocAtomic(filePath: string, content: string): Promise<void> {
+  await ensureDir(dirname(filePath));
+  const tmp = join(dirname(filePath), `.${basename(filePath)}.${randomBytes(6).toString('hex')}.tmp`);
+  await writeFile(tmp, content);
+  try {
+    await rename(tmp, filePath);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
 }
