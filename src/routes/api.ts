@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import { readFile, writeFile, unlink, rm } from 'fs/promises';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
 import archiver from 'archiver';
 import { z } from 'zod';
-import { md, STORAGE_DIR } from '../lib/config.js';
+import { md } from '../lib/config.js';
 import {
   resolveDoc,
   getFiles,
@@ -12,6 +12,7 @@ import {
   saveVersion,
   isWritableDocPath,
   resolveScope,
+  publicScope,
   ScopeError,
 } from '../lib/storage.js';
 import type { ResolvedScope } from '../lib/storage.js';
@@ -403,7 +404,8 @@ router.post('/publish', ah(async (req, res) => {
   const srcStats = await statOrNull(srcPath);
   if (!srcStats || !srcStats.isFile()) return res.status(404).json({ error: 'Archivo no encontrado' });
 
-  const publicBase = join(STORAGE_DIR, 'public');
+  const pub = publicScope(req.user.orgSlug!, req.user);
+  const publicBase = pub.basePath;
   const destPath = resolveDoc(file, publicBase);
   if (!destPath) return res.status(400).json({ error: 'Ruta invalida' });
 
@@ -424,7 +426,7 @@ router.post('/publish', ah(async (req, res) => {
     }
   }
   await writeFile(destPath, content);
-  invalidateSearchIndex('public');
+  invalidateSearchIndex(pub.id);
   res.json({ ok: true, file });
 }));
 

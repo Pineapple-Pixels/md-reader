@@ -6,13 +6,14 @@ import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../hooks/useToast';
 import { UsersPanel } from './admin/UsersPanel';
 import { TeamsPanel } from './admin/TeamsPanel';
+import { DesignPanel } from './admin/DesignPanel';
 
 export function AdminPage() {
   const { isAuthenticated, role, isLoading: authLoading } = useAuth();
   const { isDark, toggle } = useTheme();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'users' | 'teams'>('users');
+  const [tab, setTab] = useState<'users' | 'teams' | 'design'>('users');
 
   if (authLoading) return <div className="container"><p className="loading-msg">Cargando...</p></div>;
   if (!isAuthenticated || role !== 'admin') {
@@ -40,12 +41,11 @@ export function AdminPage() {
       <div className="admin-tabs">
         <button className={`admin-tab${tab === 'users' ? ' active' : ''}`} onClick={() => setTab('users')}>Usuarios</button>
         <button className={`admin-tab${tab === 'teams' ? ' active' : ''}`} onClick={() => setTab('teams')}>Teams</button>
+        <button className={`admin-tab${tab === 'design' ? ' active' : ''}`} onClick={() => setTab('design')}>Diseno</button>
       </div>
-      {tab === 'users' ? (
-        <UsersPanel toast={toast} queryClient={queryClient} />
-      ) : (
-        <TeamsPanel toast={toast} queryClient={queryClient} />
-      )}
+      {tab === 'users' && <UsersPanel toast={toast} queryClient={queryClient} />}
+      {tab === 'teams' && <TeamsPanel toast={toast} queryClient={queryClient} />}
+      {tab === 'design' && <DesignPanel toast={toast} queryClient={queryClient} />}
     </div>
   );
 }

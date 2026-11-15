@@ -1,9 +1,11 @@
+import { scopeToQueryParam } from '@shared/api';
+import { DocFrame } from '../components/DocFrame';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
-import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useScope, useScopedFetch, useScopeOrg } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
 import DOMPurify from 'dompurify';
@@ -17,6 +19,7 @@ export function DocPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { scope, urlPrefix, id: scopeId } = useScope();
+  const org = useScopeOrg();
   const scopedFetch = useScopedFetch();
   const { isAuthenticated, role } = useAuth();
   const docRef = useRef<HTMLDivElement>(null);
@@ -251,10 +254,7 @@ export function DocPage() {
   ];
 
   if (canWrite) {
-    const scopeParam =
-      scope.kind === 'me' ? 'me' :
-      scope.kind === 'team' ? `team:${scope.slug}` :
-      'public';
+    const scopeParam = scopeToQueryParam(scope);
     actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true });
     if (role === 'admin' && scope.kind !== 'public') {
       actions.push({ label: 'Publicar', onClick: () => handlePublish(false), className: 'action-btn publish-btn' });
@@ -267,7 +267,9 @@ export function DocPage() {
     <div className="container">
       <Toolbar actions={actions} />
       <div className="doc-with-comments">
-        <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data?.html || '') }} />
+        <DocFrame org={org}>
+          <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data?.html || '') }} />
+        </DocFrame>
         {activeBlock != null && (
           <div className="inline-comment-panel">
             <div className="inline-comment-header">

@@ -1,3 +1,4 @@
+import { scopeToQueryParam } from '@shared/api';
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -160,10 +161,7 @@ export function IndexPage() {
 
   function downloadDoc(name: string) {
     // Incluye scope en el link de descarga para que el backend lo resuelva correcto.
-    const scopeParam =
-      scope.kind === 'me' ? 'me' :
-      scope.kind === 'team' ? `team:${scope.slug}` :
-      'public';
+    const scopeParam = scopeToQueryParam(scope);
     window.location.href = `/api/download?scope=${encodeURIComponent(scopeParam)}&file=${encodeURIComponent(name)}`;
   }
 

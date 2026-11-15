@@ -1,6 +1,7 @@
 import { ADMIN_USER, ADMIN_PASS } from './config.js';
 import { countUsers, createUser } from './users.js';
 import { logger } from './logger.js';
+import { findOrgBySlug, addOrgMember, DEFAULT_ORG_SLUG } from './orgs.js';
 
 // Si la DB arranca vacia y existen ADMIN_USER/ADMIN_PASS en el env,
 // seed del admin como user id 1 con role admin.
@@ -12,10 +13,9 @@ export async function seedAdminIfEmpty(): Promise<void> {
     logger.warn('seed', 'users vacia pero ADMIN_USER/ADMIN_PASS no estan configurados. Crea users con `npm run user:create`.');
     return;
   }
-  const user = await createUser({
-    username: ADMIN_USER,
-    password: ADMIN_PASS,
-    role: 'admin',
-  });
+  const org = await findOrgBySlug(DEFAULT_ORG_SLUG);
+  if (!org) throw new Error(`falta la organizacion '${DEFAULT_ORG_SLUG}' (migracion 004)`);
+  const user = await createUser({ username: ADMIN_USER, password: ADMIN_PASS });
+  await addOrgMember(org.id, user.id, 'admin');
   logger.info('seed', 'admin creado desde env', { id: user.id, username: user.username });
 }

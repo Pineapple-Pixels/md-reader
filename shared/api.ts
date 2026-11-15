@@ -3,7 +3,7 @@
  *
  * Tres entry points:
  *   - `apiFetch(path, init)`         → /api/<path>            (cookie auth, sin scope)
- *   - `apiFetchPublic(path, init)`   → /api/public/<path>     (sin auth, lee scope public)
+ *   - `apiFetchPublic(org, path)`    → /api/public/<org><path> (sin auth, publicos de una org)
  *   - `apiFetchScoped(path, scope)`  → /api/<path>?scope=...  (cookie auth + scope en query)
  *
  * Los callers de pagesde docs usan `apiFetchScoped` (via `useScopedFetch` hook).
@@ -18,14 +18,14 @@ export type ScopeKind = 'me' | 'team' | 'public';
 export type Scope =
   | { kind: 'me' }
   | { kind: 'team'; slug: string }
-  | { kind: 'public' };
+  | { kind: 'public'; org: string };
 
 /** Serializa un Scope al valor que espera el backend en `?scope=`. */
 export function scopeToQueryParam(scope: Scope): string {
   switch (scope.kind) {
     case 'me': return 'me';
     case 'team': return `team:${scope.slug}`;
-    case 'public': return 'public';
+    case 'public': return `public:${scope.org}`;
   }
 }
 
@@ -34,7 +34,7 @@ export function scopeId(scope: Scope): string {
   switch (scope.kind) {
     case 'me': return 'me';
     case 'team': return `team:${scope.slug}`;
-    case 'public': return 'public';
+    case 'public': return `public:${scope.org}`;
   }
 }
 
@@ -60,8 +60,8 @@ export function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return doFetch<T>(`${BASE}${path}`, init);
 }
 
-export function apiFetchPublic<T>(path: string, init?: RequestInit): Promise<T> {
-  return doFetch<T>(`${PUBLIC_BASE}${path}`, init);
+export function apiFetchPublic<T>(org: string, path: string, init?: RequestInit): Promise<T> {
+  return doFetch<T>(`${PUBLIC_BASE}/${encodeURIComponent(org)}${path}`, init);
 }
 
 /**
@@ -75,7 +75,7 @@ export function apiFetchScoped<T>(
   anonymous = false,
 ): Promise<T> {
   if (scope.kind === 'public' && anonymous) {
-    return apiFetchPublic<T>(path, init);
+    return apiFetchPublic<T>(scope.org, path, init);
   }
   const param = scopeToQueryParam(scope);
   const sep = path.includes('?') ? '&' : '?';

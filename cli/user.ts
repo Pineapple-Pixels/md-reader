@@ -1,12 +1,13 @@
 #!/usr/bin/env tsx
 // CLI de gestion de users. Uso:
-//   tsx cli/user.ts create <username> <password> [--role=admin|member] [--name="Display Name"]
+//   tsx cli/user.ts create <username> <password> [--role=admin|member] [--name="Display Name"] [--org=slug]
 //   tsx cli/user.ts passwd <username> <newPassword>
-//   tsx cli/user.ts delete <username>
-//   tsx cli/user.ts list
+//   tsx cli/user.ts delete <username>        (borra la cuenta en todas las orgs)
+//   tsx cli/user.ts list [--org=slug]        (miembros de la org)
 
-import { createUser, updatePassword, deleteUser, listUsers, findByUsername } from '../src/lib/users.js';
+import { createUser, updatePassword, deleteUser, findByUsername } from '../src/lib/users.js';
 import { closeDb } from '../src/lib/db.js';
+import { requireOrg, addOrgMember, listOrgMembers } from '../src/lib/orgs.js';
 
 type Parsed = {
   positional: string[];
@@ -31,10 +32,11 @@ function parseArgs(argv: string[]): Parsed {
 
 function usage(): never {
   console.error(`Uso:
-  tsx cli/user.ts create <username> <password> [--role=admin|member] [--name="Display Name"]
+  tsx cli/user.ts create <username> <password> [--role=admin|member] [--name="Display Name"] [--org=slug]
   tsx cli/user.ts passwd <username> <newPassword>
-  tsx cli/user.ts delete <username>
-  tsx cli/user.ts list`);
+  tsx cli/user.ts delete <username> [--org=slug]
+  tsx cli/user.ts list [--org=slug]
+  (--org default: default)`);
   process.exit(1);
 }
 
@@ -51,13 +53,14 @@ async function cmdCreate(args: Parsed): Promise<void> {
     console.error(`[user] ya existe: ${username}`);
     process.exit(1);
   }
+  const org = await requireOrg(args.flags['org']);
   const user = await createUser({
     username,
     password,
-    role: roleFlag,
     ...(args.flags['name'] !== undefined ? { displayName: args.flags['name'] } : {}),
   });
-  console.log(`[user] creado id=${user.id} username=${user.username} role=${user.role}`);
+  await addOrgMember(org.id, user.id, roleFlag);
+  console.log(`[user] creado id=${user.id} username=${user.username} role=${roleFlag} org=${org.slug}`);
 }
 
 async function cmdPasswd(args: Parsed): Promise<void> {
@@ -82,8 +85,8 @@ async function cmdDelete(args: Parsed): Promise<void> {
   console.log(`[user] eliminado: ${username}`);
 }
 
-async function cmdList(): Promise<void> {
-  const { data: users } = await listUsers();
+async function cmdList(args: Parsed): Promise<void> {
+  const { data: users } = await listOrgMembers((await requireOrg(args.flags['org'])).id);
   if (users.length === 0) {
     console.log('[user] no hay users');
     return;
@@ -102,7 +105,7 @@ async function main(): Promise<void> {
     case 'create': await cmdCreate(args); break;
     case 'passwd': await cmdPasswd(args); break;
     case 'delete': await cmdDelete(args); break;
-    case 'list':   await cmdList(); break;
+    case 'list':   await cmdList(args); break;
     default: usage();
   }
 }

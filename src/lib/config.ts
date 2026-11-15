@@ -15,6 +15,11 @@ export const ADMIN_PASS = process.env['ADMIN_PASS'] || '';
 export const JWT_SECRET = process.env['JWT_SECRET'] || 'change-me-in-production';
 export const DATABASE_URL = process.env['DATABASE_URL'] || '';
 
+export const GOOGLE_CLIENT_ID = process.env['GOOGLE_CLIENT_ID'] || '';
+export const GOOGLE_CLIENT_SECRET = process.env['GOOGLE_CLIENT_SECRET'] || '';
+/** Origin users reach the app at, e.g. https://docs.example.com (builds the OAuth redirect URI). */
+export const PUBLIC_URL = (process.env['PUBLIC_URL'] || '').replace(/\/$/, '');
+
 if (!DATABASE_URL) {
   const msg = 'DATABASE_URL no esta configurado. Requerido para login multi-usuario.';
   if (process.env['NODE_ENV'] === 'production') throw new Error(msg);

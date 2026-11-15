@@ -61,6 +61,15 @@ Elegir una password fuerte. Solo se usa la primera vez que la tabla `users` esta
 /app/storage
 ```
 
+### `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL` (opcional: login con Google)
+Sin las tres, el boton "Continuar con Google" no aparece y solo hay login con contrasena.
+
+1. Google Cloud Console → APIs & Services → Credentials → *Create OAuth client ID* → tipo *Web application*.
+2. *Authorized redirect URI*: `<PUBLIC_URL>/api/auth/google/callback` (ej. `https://docs.tudominio.com/api/auth/google/callback`).
+3. Copia client ID y secret a las env vars de Coolify. `PUBLIC_URL` es el origen exacto con el que entra la gente, sin `/` final.
+
+Quien entra con Google cae en la organizacion cuyo dominio de email lo admite (`npm run org:create <slug> <nombre> -- --domains=facu.edu.ar`) o en la que un admin lo invito por email desde el panel de Admin. Si no, ve "no pertenece a ninguna organizacion".
+
 ---
 
 ## 2. Volumen persistente para storage

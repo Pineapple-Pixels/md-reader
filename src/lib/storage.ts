@@ -1,4 +1,4 @@
-import { readdir, writeFile, mkdir, stat } from 'fs/promises';
+import { readdir, writeFile, mkdir, stat, rename } from 'fs/promises';
 import { join, basename, resolve, sep } from 'path';
 import { existsSync } from 'fs';
 import { STORAGE_DIR } from './config.js';
@@ -12,23 +12,18 @@ export type FileEntry = {
 // -----------------------------------------------------------------------------
 // Scopes
 // -----------------------------------------------------------------------------
-// Un scope es el contenedor logico de docs. Hay tres tipos:
-//   - `me`           → docs privados del user actual
-//   - `team:<slug>`  → docs del team (solo miembros)
-//   - `public`       → docs visibles para todos (admin puede escribir)
-//
-// Representamos el scope resuelto con un objeto que carga el path fisico, la
-// identidad del scope y los permisos calculados para el user que lo pidio.
-// Las rutas del API llaman a `resolveScope(req.query.scope, req.user)` una vez
-// y despues pasan `scope.basePath` a las funciones de storage.
+// Every scope lives inside one organization: STORAGE_DIR/orgs/<org>/{users,teams,public}.
+//   - `me`             → the user's private docs
+//   - `team:<slug>`    → the team's docs (members only)
+//   - `public`         → the user's org public docs
+//   - `public:<org>`   → an org's public docs (read by anyone, written by its admins)
 
 export type ScopeKind = 'me' | 'team' | 'public';
 
 export type ResolvedScope = {
   kind: ScopeKind;
-  // Identificador canonico para routing y cache keys: 'me:<userId>', 'team:<slug>', 'public'.
+  /** Canonical id for comments and caches: '<org>/me:<userId>', '<org>/team:<slug>', '<org>/public'. */
   id: string;
-  // Directorio raiz del scope en disco.
   basePath: string;
   canWrite: boolean;
   canComment: boolean;
@@ -42,12 +37,30 @@ export class ScopeError extends Error {
   }
 }
 
-const TEAM_SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-// Parsea el query param `scope` y calcula permisos para el user dado.
-// `user` puede ser undefined para llamadas publicas (ver public-api.ts).
-// Tira ScopeError con status HTTP apropiado si el scope es invalido o el user
-// no tiene permiso para verlo.
+export function isSlug(s: string): boolean {
+  return SLUG_RE.test(s) && s.length <= 50;
+}
+
+export function orgDir(orgSlug: string): string {
+  return join(STORAGE_DIR, 'orgs', orgSlug);
+}
+
+/** Public scope of an org; `user` only grants write/comment when they belong to it. */
+export function publicScope(orgSlug: string, user: AuthUser | undefined): ResolvedScope {
+  if (!isSlug(orgSlug)) throw new ScopeError('Organizacion invalida', 400);
+  const sameOrg = user?.orgSlug === orgSlug;
+  return {
+    kind: 'public',
+    id: `${orgSlug}/public`,
+    basePath: join(orgDir(orgSlug), 'public'),
+    canWrite: sameOrg && user?.role === 'admin',
+    canComment: sameOrg,
+  };
+}
+
+// Throws ScopeError with the matching HTTP status when the scope is invalid or forbidden.
 export function resolveScope(
   scopeStr: string | null | undefined,
   user: AuthUser | undefined,
@@ -56,50 +69,58 @@ export function resolveScope(
     throw new ScopeError('scope es requerido (me | team:<slug> | public)', 400);
   }
 
-  // Scope publico: lectura sin auth, escritura solo admin logueado.
-  if (scopeStr === 'public') {
-    return {
-      kind: 'public',
-      id: 'public',
-      basePath: join(STORAGE_DIR, 'public'),
-      canWrite: user?.role === 'admin',
-      canComment: !!user, // cualquier user logueado puede comentar
-    };
-  }
+  if (scopeStr.startsWith('public:')) return publicScope(scopeStr.slice('public:'.length).toLowerCase(), user);
 
-  // Scope privado del user.
+  if (!user) throw new ScopeError('No autorizado', 401);
+  const org = user.orgSlug;
+  if (!org) throw new ScopeError('Todavia no perteneces a ninguna organizacion', 403);
+
+  if (scopeStr === 'public') return publicScope(org, user);
+
   if (scopeStr === 'me') {
-    if (!user) throw new ScopeError('No autorizado', 401);
     return {
       kind: 'me',
-      id: `me:${user.userId}`,
-      basePath: join(STORAGE_DIR, 'users', String(user.userId)),
+      id: `${org}/me:${user.userId}`,
+      basePath: join(orgDir(org), 'users', String(user.userId)),
       canWrite: true,
       canComment: true,
     };
   }
 
-  // Scope de team: 'team:<slug>'.
   if (scopeStr.startsWith('team:')) {
-    if (!user) throw new ScopeError('No autorizado', 401);
     const slug = scopeStr.slice('team:'.length).toLowerCase();
-    if (!slug || !TEAM_SLUG_RE.test(slug) || slug.length > 50) {
-      throw new ScopeError('Slug de team invalido', 400);
-    }
-    const membership = user.teams.find((t) => t.slug.toLowerCase() === slug);
-    if (!membership) {
+    if (!isSlug(slug)) throw new ScopeError('Slug de team invalido', 400);
+    // user.teams only holds teams of the user's own org (see listTeamsForUser).
+    if (!user.teams.some((t) => t.slug.toLowerCase() === slug)) {
       throw new ScopeError('No sos miembro de este team', 403);
     }
     return {
       kind: 'team',
-      id: `team:${slug}`,
-      basePath: join(STORAGE_DIR, 'teams', slug),
-      canWrite: true, // todos los miembros pueden escribir (rol admin/member ambos)
+      id: `${org}/team:${slug}`,
+      basePath: join(orgDir(org), 'teams', slug),
+      canWrite: true,
       canComment: true,
     };
   }
 
   throw new ScopeError('scope invalido', 400);
+}
+
+/**
+ * Moves pre-organization storage (STORAGE_DIR/{users,teams,public}) into the default org.
+ * Idempotent; never overwrites an existing destination.
+ */
+export async function migrateLegacyStorage(defaultOrgSlug: string): Promise<string[]> {
+  const moved: string[] = [];
+  for (const name of ['users', 'teams', 'public']) {
+    const from = join(STORAGE_DIR, name);
+    const to = join(orgDir(defaultOrgSlug), name);
+    if (!existsSync(from) || existsSync(to)) continue;
+    await ensureDir(orgDir(defaultOrgSlug));
+    await rename(from, to);
+    moved.push(name);
+  }
+  return moved;
 }
 
 // -----------------------------------------------------------------------------

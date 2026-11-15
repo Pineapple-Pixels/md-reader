@@ -5,16 +5,20 @@ import rateLimit from 'express-rate-limit';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod';
-import { login, verifyToken, COOKIE_NAME, requireAuth, invalidateHydrateCache } from './lib/auth.js';
-import { findByUsername, findById, updatePassword, verifyPassword } from './lib/users.js';
+import { login, verifyToken, COOKIE_NAME, requireAuth, invalidateHydrateCache, signSession, signDefaultSession, setSessionCookie, clearSessionCookie, hydrateUser } from './lib/auth.js';
+import { GOOGLE_ENABLED, FLOW_COOKIE, FLOW_TTL_MS, startGoogleFlow, readFlowCookie, finishGoogleFlow } from './lib/google.js';
+import { migrateLegacyStorage } from './lib/storage.js';
+import { DEFAULT_ORG_SLUG, listUserOrgs, setLastOrg } from './lib/orgs.js';
+import { findByUsername, findById, updatePassword, verifyPassword, findOrProvisionGoogleUser } from './lib/users.js';
 import { sql } from './lib/db.js';
-import { listTeamsForUser } from './lib/teams.js';
 import { seedAdminIfEmpty } from './lib/seed.js';
 import { runMigrations } from './lib/migrate.js';
 import { logger } from './lib/logger.js';
+import { staticAssets } from './lib/static.js';
 import apiRouter from './routes/api.js';
 import publicApiRouter from './routes/public-api.js';
 import adminApiRouter from './routes/admin-api.js';
+import meApiRouter from './routes/me-api.js';
 
 const app = express();
 
@@ -33,19 +37,16 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
       scriptSrc: ["'self'", THEME_SCRIPT_HASH, 'https://cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
-      fontSrc: ["'self'", 'https://cdnjs.cloudflare.com', 'data:'],
+      fontSrc: ["'self'", 'https://cdnjs.cloudflare.com', 'https://fonts.gstatic.com', 'data:'],
     },
   },
 }));
 
 // Static assets (Vite builds → public/)
-app.use(express.static('public', {
-  maxAge: process.env['NODE_ENV'] === 'production' ? '1y' : 0,
-  immutable: process.env['NODE_ENV'] === 'production',
-}));
+app.use(staticAssets('public', process.env['NODE_ENV'] === 'production'));
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false }));
@@ -93,27 +94,48 @@ app.get('/health', (_req, res) => {
 app.get('/api/auth/me', (req, res, next) => {
   const cookies = req.cookies as Record<string, string | undefined> | undefined;
   const token = cookies?.[COOKIE_NAME];
-  if (!token) {
-    res.json({ authenticated: false });
-    return;
-  }
-  const decoded = verifyToken(token);
+  const decoded = token ? verifyToken(token) : null;
   if (!decoded) {
-    res.json({ authenticated: false });
+    res.json({ authenticated: false, google: GOOGLE_ENABLED });
     return;
   }
-  // Hidratamos teams desde la DB (cacheado 60s) para que el cliente pueda
-  // pintar el scope-switcher sin otra ida y vuelta. Tambien devolvemos el
-  // displayName para que la pagina de perfil pueda prellenarse.
-  Promise.all([listTeamsForUser(decoded.userId), findById(decoded.userId)])
-    .then(([teams, user]) => {
+  Promise.all([hydrateUser(decoded), findById(decoded.userId), listUserOrgs(decoded.userId)])
+    .then(([me, user, orgs]) => {
+      if (!me || !user) {
+        res.json({ authenticated: false, google: GOOGLE_ENABLED });
+        return;
+      }
       res.json({
         authenticated: true,
-        user: decoded.username,
-        role: decoded.role,
-        displayName: user?.displayName ?? null,
-        teams,
+        user: me.username,
+        role: me.role,
+        displayName: user.displayName,
+        org: me.orgSlug ? { slug: me.orgSlug, name: me.orgName ?? me.orgSlug, role: me.role } : null,
+        orgs: orgs.map((o) => ({ slug: o.slug, name: o.name, role: o.role })),
+        teams: me.teams,
       });
+    })
+    .catch(next);
+});
+
+// Moves the session to another organization the user belongs to.
+app.post('/api/auth/switch-org', requireAuth, (req, res, next) => {
+  const parsed = z.object({ slug: z.string().min(1).max(50) }).strict().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'slug es requerido' });
+    return;
+  }
+  const me = req.user!;
+  listUserOrgs(me.userId)
+    .then(async (orgs) => {
+      const target = orgs.find((o) => o.slug === parsed.data.slug.toLowerCase());
+      if (!target) {
+        res.status(404).json({ error: 'No perteneces a esa organizacion' });
+        return;
+      }
+      await setLastOrg(me.userId, target.orgId);
+      setSessionCookie(res, signSession({ id: me.userId, username: me.username }, target.orgId));
+      res.json({ ok: true });
     })
     .catch(next);
 });
@@ -137,15 +159,60 @@ app.post('/api/auth/login', loginLimiter, (req, res, next) => {
         res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
         return;
       }
-      res.cookie(COOKIE_NAME, token, {
-        httpOnly: true,
-        secure: process.env['NODE_ENV'] === 'production',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        sameSite: 'strict',
-      });
+      setSessionCookie(res, token);
       res.json({ ok: true });
     })
     .catch(next);
+});
+
+const flowCookieOpts = {
+  httpOnly: true,
+  secure: process.env['NODE_ENV'] === 'production',
+  sameSite: 'lax' as const,
+  path: '/api/auth/google',
+};
+
+// Its own budget: a whole class signing in at once must not lock out password logins or each other.
+const googleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => res.redirect('/login?error=google_rate'),
+});
+
+app.get('/api/auth/google', googleLimiter, (_req, res) => {
+  if (!GOOGLE_ENABLED) {
+    res.redirect('/login?error=google_off');
+    return;
+  }
+  const { url, flowCookie } = startGoogleFlow();
+  res.cookie(FLOW_COOKIE, flowCookie, { ...flowCookieOpts, maxAge: FLOW_TTL_MS });
+  res.redirect(url);
+});
+
+app.get('/api/auth/google/callback', googleLimiter, (req, res) => {
+  const cookies = req.cookies as Record<string, string | undefined> | undefined;
+  const flow = readFlowCookie(cookies?.[FLOW_COOKIE]);
+  res.clearCookie(FLOW_COOKIE, flowCookieOpts);
+  const code = typeof req.query['code'] === 'string' ? req.query['code'] : '';
+  if (!GOOGLE_ENABLED || !flow || !code || req.query['state'] !== flow.state) {
+    res.redirect('/login?error=google');
+    return;
+  }
+  (async () => {
+    const identity = await finishGoogleFlow(code, flow);
+    if (!identity) {
+      res.redirect('/login?error=google');
+      return;
+    }
+    const user = await findOrProvisionGoogleUser(identity);
+    setSessionCookie(res, await signDefaultSession(user));
+    res.redirect('/me');
+  })().catch((err: unknown) => {
+    logger.error('auth', 'google callback fallo', { err: String(err) });
+    if (!res.headersSent) res.redirect('/login?error=google');
+  });
 });
 
 // Self-service: cualquier user logueado puede cambiar su propio displayName
@@ -183,6 +250,10 @@ app.patch('/api/auth/me', requireAuth, (req, res, next) => {
         res.status(404).json({ error: 'Usuario no encontrado' });
         return;
       }
+      if (!full.passwordHash) {
+        res.status(400).json({ error: 'Tu cuenta entra con Google y no tiene contrasena' });
+        return;
+      }
       const ok = await verifyPassword(currentPassword!, full.passwordHash);
       if (!ok) {
         res.status(401).json({ error: 'Password actual incorrecta' });
@@ -199,11 +270,7 @@ app.patch('/api/auth/me', requireAuth, (req, res, next) => {
 });
 
 app.post('/api/auth/logout', (_req, res) => {
-  res.clearCookie(COOKIE_NAME, {
-    httpOnly: true,
-    secure: process.env['NODE_ENV'] === 'production',
-    sameSite: 'strict',
-  });
+  clearSessionCookie(res);
   res.json({ ok: true });
 });
 
@@ -216,7 +283,10 @@ app.post('/api/save', writeLimiter);
 app.delete('/api/delete', writeLimiter);
 
 // Public API routes (no auth, rate limited)
-app.use('/api/public', publicApiLimiter, publicApiRouter);
+app.use('/api/public/:org', publicApiLimiter, publicApiRouter);
+
+// The signed-in user's own settings (themes)
+app.use('/api/me', meApiRouter);
 
 // Admin API routes (auth + admin role)
 app.use('/api/admin', adminApiRouter);
@@ -228,7 +298,7 @@ app.use('/api', apiRouter);
 const spaHtml = resolve('public', 'index.html');
 app.get('/{*path}', (_req, res) => {
   if (existsSync(spaHtml)) {
-    res.sendFile(spaHtml);
+    res.sendFile(spaHtml, { headers: { 'Cache-Control': 'no-cache' } });
   } else {
     res.status(404).send('Build the client first: npm run build');
   }
@@ -250,6 +320,10 @@ const PORT = Number(process.env['PORT']) || 3500;
 runMigrations()
   .catch((err) => {
     logger.error('migrate', 'error durante migraciones', { err: String(err) });
+  })
+  .then(async () => {
+    const moved = await migrateLegacyStorage(DEFAULT_ORG_SLUG);
+    if (moved.length) logger.info('storage', `movido a orgs/${DEFAULT_ORG_SLUG}: ${moved.join(', ')}`);
   })
   .then(() => seedAdminIfEmpty())
   .catch((err) => {

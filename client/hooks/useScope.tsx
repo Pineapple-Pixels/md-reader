@@ -14,7 +14,7 @@ import { useAuth } from './useAuth';
 
 interface ScopeContextValue {
   scope: Scope;
-  // Prefix de URL del scope: '/me', '/t/<slug>', '/pub'. Sirve para construir
+  // Prefix de URL del scope: '/me', '/t/<slug>', '/pub/<org>'. Sirve para construir
   // hrefs relativos al scope (ej. `${prefix}/doc/archivo.md`).
   urlPrefix: string;
   // Identificador estable para React Query keys ('me', 'team:<slug>', 'public').
@@ -29,10 +29,17 @@ export function ScopeProvider({ scope, children }: { scope: Scope; children: Rea
     urlPrefix:
       scope.kind === 'me' ? '/me' :
       scope.kind === 'team' ? `/t/${scope.slug}` :
-      '/pub',
+      `/pub/${scope.org}`,
     id: scopeId(scope),
   }), [scope]);
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
+}
+
+/** Organization whose documents this scope shows: the viewed org for public pages, else the user's. */
+export function useScopeOrg(): string | null {
+  const { scope } = useScope();
+  const { org } = useAuth();
+  return scope.kind === 'public' ? scope.org : org?.slug ?? null;
 }
 
 export function useScope(): ScopeContextValue {

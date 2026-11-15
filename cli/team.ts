@@ -17,6 +17,9 @@ import {
   findBySlug,
 } from '../src/lib/teams.js';
 import { closeDb } from '../src/lib/db.js';
+import { requireOrg } from '../src/lib/orgs.js';
+
+const orgId = async (args: Parsed): Promise<number> => (await requireOrg(args.flags['org'])).id;
 
 type Parsed = {
   positional: string[];
@@ -46,7 +49,8 @@ function usage(): never {
   tsx cli/team.ts list
   tsx cli/team.ts add-user <slug> <username> [--role=admin|member]
   tsx cli/team.ts remove-user <slug> <username>
-  tsx cli/team.ts members <slug>`);
+  tsx cli/team.ts members <slug>
+  Todos aceptan --org=<slug> (default: default)`);
   process.exit(1);
 }
 
@@ -54,19 +58,19 @@ async function cmdCreate(args: Parsed): Promise<void> {
   const [slug, ...nameParts] = args.positional;
   const name = nameParts.join(' ');
   if (!slug || !name) usage();
-  const existing = await findBySlug(slug);
+  const existing = await findBySlug(await orgId(args), slug);
   if (existing) {
     console.error(`[team] ya existe: ${slug}`);
     process.exit(1);
   }
-  const team = await createTeam({ slug, name });
+  const team = await createTeam(await orgId(args), { slug, name });
   console.log(`[team] creado id=${team.id} slug=${team.slug} name="${team.name}"`);
 }
 
 async function cmdDelete(args: Parsed): Promise<void> {
   const [slug] = args.positional;
   if (!slug) usage();
-  const ok = await deleteTeam(slug);
+  const ok = await deleteTeam(await orgId(args), slug);
   if (!ok) {
     console.error(`[team] no encontrado: ${slug}`);
     process.exit(1);
@@ -74,8 +78,8 @@ async function cmdDelete(args: Parsed): Promise<void> {
   console.log(`[team] eliminado: ${slug}`);
 }
 
-async function cmdList(): Promise<void> {
-  const { data: teams } = await listTeams();
+async function cmdList(args: Parsed): Promise<void> {
+  const { data: teams } = await listTeams(await orgId(args));
   if (teams.length === 0) {
     console.log('[team] no hay teams');
     return;
@@ -94,14 +98,14 @@ async function cmdAddUser(args: Parsed): Promise<void> {
     console.error(`[team] role invalido: ${roleFlag} (usar 'admin' o 'member')`);
     process.exit(1);
   }
-  await addMember(slug, username, roleFlag);
+  await addMember(await orgId(args), slug, username, roleFlag);
   console.log(`[team] ${username} agregado a ${slug} como ${roleFlag}`);
 }
 
 async function cmdRemoveUser(args: Parsed): Promise<void> {
   const [slug, username] = args.positional;
   if (!slug || !username) usage();
-  const ok = await removeMember(slug, username);
+  const ok = await removeMember(await orgId(args), slug, username);
   if (!ok) {
     console.error(`[team] membership no encontrado: team=${slug} user=${username}`);
     process.exit(1);
@@ -112,7 +116,7 @@ async function cmdRemoveUser(args: Parsed): Promise<void> {
 async function cmdMembers(args: Parsed): Promise<void> {
   const [slug] = args.positional;
   if (!slug) usage();
-  const { data: members } = await listMembers(slug);
+  const { data: members } = await listMembers(await orgId(args), slug);
   if (members.length === 0) {
     console.log(`[team] ${slug} sin miembros`);
     return;
@@ -130,7 +134,7 @@ async function main(): Promise<void> {
   switch (cmd) {
     case 'create':      await cmdCreate(args); break;
     case 'delete':      await cmdDelete(args); break;
-    case 'list':        await cmdList(); break;
+    case 'list':        await cmdList(args); break;
     case 'add-user':    await cmdAddUser(args); break;
     case 'remove-user': await cmdRemoveUser(args); break;
     case 'members':     await cmdMembers(args); break;

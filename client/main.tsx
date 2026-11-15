@@ -15,7 +15,10 @@ import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/jetbrains-mono/600.css';
 import '@fontsource/jetbrains-mono/700.css';
 import { App } from './App';
+import { applyCachedTheme } from './hooks/useTheme';
 import './app.css';
+
+applyCachedTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

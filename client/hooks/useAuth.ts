@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
-import type { AuthResponse, TeamMembership } from '@shared/types';
+import type { AuthResponse, OrgMembership, TeamMembership } from '@shared/types';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -8,6 +8,9 @@ interface AuthState {
   displayName: string | null;
   role: 'admin' | 'member' | null;
   teams: TeamMembership[];
+  org: OrgMembership | null;
+  orgs: OrgMembership[];
+  googleEnabled: boolean;
   isLoading: boolean;
   // true mientras hay un request de /auth/me en vuelo, incluso si ya hay data
   // cacheada. Los guards de ruta lo necesitan para no rebotar a /login con
@@ -35,6 +38,9 @@ export function useAuth(): AuthState {
     displayName: data?.displayName ?? null,
     role: data?.role ?? null,
     teams: data?.teams ?? [],
+    org: data?.org ?? null,
+    orgs: data?.orgs ?? [],
+    googleEnabled: data?.google ?? false,
     isLoading,
     isFetching,
     error: error ?? null,

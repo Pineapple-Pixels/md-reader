@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
-import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useScope, useScopedFetch, useScopeOrg } from '../hooks/useScope';
+import { DocFrame } from '../components/DocFrame';
 
 declare const hljs: { highlightAll: () => void };
 
@@ -18,6 +19,7 @@ export function ProjectPage() {
   const [searchParams] = useSearchParams();
   const { id: scopeId } = useScope();
   const scopedFetch = useScopedFetch();
+  const org = useScopeOrg();
 
   const page = searchParams.get('page') || '';
 
@@ -73,7 +75,9 @@ export function ProjectPage() {
       {loadingPage ? (
         <div className="page-loading">Cargando...</div>
       ) : (
-        <div className="doc" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docHtml) }} />
+        <DocFrame org={org}>
+          <div className="doc" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docHtml) }} />
+        </DocFrame>
       )}
     </div>
   );
