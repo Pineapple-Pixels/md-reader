@@ -2,6 +2,7 @@ import { readFile, stat } from 'fs/promises';
 import { join } from 'path';
 import { getFiles } from './storage.js';
 import { logger } from './logger.js';
+import { docKind, stripDocExt } from '../../shared/doc-types.js';
 
 const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
 
@@ -36,9 +37,10 @@ function stripMarkdown(text: string): string {
 
 /** Extract first heading as title, fallback to filename */
 function extractTitle(content: string, filename: string): string {
-  const match = content.match(/^#\s+(.+)/m);
-  const captured = match?.[1];
-  return captured ? captured.trim() : filename.replace(/\.md$/, '');
+  const captured = docKind(filename) === 'html'
+    ? (content.match(/<title[^>]*>([^<]+)<\/title>/i) ?? content.match(/<h1[^>]*>([^<]+)<\/h1>/i))?.[1]
+    : content.match(/^#\s+(.+)/m)?.[1];
+  return captured ? captured.trim() : stripDocExt(filename);
 }
 
 /**
@@ -67,7 +69,9 @@ export async function getSearchIndex(
       const st = await stat(filePath);
       if (st.size > MAX_FILE_SIZE) throw new Error(`file too large: ${f.name} (${st.size} bytes)`);
       const content = await readFile(filePath, 'utf-8');
-      const plain = stripMarkdown(content);
+      const plain = docKind(f.name) === 'html'
+        ? content.replace(/<(script|style)[\s\S]*?<\/\1>|<[^>]+>/gi, ' ').replace(/\s+/g, ' ').trim()
+        : stripMarkdown(content);
       return {
         file: f.name,
         title: extractTitle(content, f.name),

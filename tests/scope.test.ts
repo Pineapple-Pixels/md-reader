@@ -1,162 +1,82 @@
 import { describe, it, expect } from 'vitest';
+import { join } from 'path';
+import { resolveScope, ScopeError } from '../src/lib/storage.js';
+import { STORAGE_DIR } from '../src/lib/config.js';
+import type { AuthUser } from '../src/lib/auth.js';
 
-// Test resolveScope logic inline to avoid config.ts side effects
-type ScopeKind = 'me' | 'team' | 'public';
-type AuthUser = {
-  userId: number;
-  username: string;
-  role: 'admin' | 'member';
-  teams: Array<{ slug: string; name: string; role: string }>;
-};
+const user = (over: Partial<AuthUser> = {}): AuthUser => ({
+  userId: 7,
+  username: 'ana',
+  role: 'member',
+  orgId: 1,
+  orgSlug: 'facu-a',
+  orgName: 'Facu A',
+  teams: [{ slug: 'catedra', name: 'Catedra', role: 'member' }],
+  ...over,
+});
 
-type ResolvedScope = {
-  kind: ScopeKind;
-  id: string;
-  basePath: string;
-  canWrite: boolean;
-  canComment: boolean;
-};
-
-class ScopeError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
+function status(fn: () => unknown): number | undefined {
+  try {
+    fn();
+  } catch (err) {
+    if (err instanceof ScopeError) return err.status;
+    throw err;
   }
+  return undefined;
 }
-
-const STORAGE_DIR = '/storage';
-const TEAM_SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
-
-function resolveScope(
-  scopeStr: string | null | undefined,
-  user: AuthUser | undefined,
-): ResolvedScope {
-  if (!scopeStr) {
-    throw new ScopeError('scope es requerido (me | team:<slug> | public)', 400);
-  }
-  if (scopeStr === 'public') {
-    return {
-      kind: 'public',
-      id: 'public',
-      basePath: `${STORAGE_DIR}/public`,
-      canWrite: user?.role === 'admin',
-      canComment: !!user,
-    };
-  }
-  if (scopeStr === 'me') {
-    if (!user) throw new ScopeError('No autorizado', 401);
-    return {
-      kind: 'me',
-      id: `me:${user.userId}`,
-      basePath: `${STORAGE_DIR}/users/${user.userId}`,
-      canWrite: true,
-      canComment: true,
-    };
-  }
-  if (scopeStr.startsWith('team:')) {
-    if (!user) throw new ScopeError('No autorizado', 401);
-    const slug = scopeStr.slice('team:'.length).toLowerCase();
-    if (!slug || !TEAM_SLUG_RE.test(slug) || slug.length > 50) {
-      throw new ScopeError('Slug de team invalido', 400);
-    }
-    const membership = user.teams.find((t) => t.slug.toLowerCase() === slug);
-    if (!membership) {
-      throw new ScopeError('No sos miembro de este team', 403);
-    }
-    return {
-      kind: 'team',
-      id: `team:${slug}`,
-      basePath: `${STORAGE_DIR}/teams/${slug}`,
-      canWrite: true,
-      canComment: true,
-    };
-  }
-  throw new ScopeError('scope invalido', 400);
-}
-
-const adminUser: AuthUser = {
-  userId: 1, username: 'admin', role: 'admin',
-  teams: [{ slug: 'dev', name: 'Dev Team', role: 'admin' }],
-};
-
-const memberUser: AuthUser = {
-  userId: 2, username: 'member', role: 'member',
-  teams: [{ slug: 'dev', name: 'Dev Team', role: 'member' }],
-};
 
 describe('resolveScope', () => {
-  it('throws 400 if scope is empty', () => {
-    expect(() => resolveScope(null, adminUser)).toThrow(ScopeError);
-    expect(() => resolveScope('', adminUser)).toThrow(ScopeError);
-    expect(() => resolveScope(undefined, adminUser)).toThrow(ScopeError);
+  it('rejects empty and unknown scopes', () => {
+    expect(status(() => resolveScope('', user()))).toBe(400);
+    expect(status(() => resolveScope('otro', user()))).toBe(400);
   });
 
-  describe('public scope', () => {
-    it('admin can write public', () => {
-      const s = resolveScope('public', adminUser);
-      expect(s.kind).toBe('public');
-      expect(s.canWrite).toBe(true);
-      expect(s.canComment).toBe(true);
-    });
+  it('puts me and team inside the user org, with org-prefixed ids', () => {
+    const me = resolveScope('me', user());
+    expect(me.basePath).toBe(join(STORAGE_DIR, 'orgs', 'facu-a', 'users', '7'));
+    expect(me.id).toBe('facu-a/me:7');
 
-    it('member cannot write public', () => {
-      const s = resolveScope('public', memberUser);
-      expect(s.canWrite).toBe(false);
-      expect(s.canComment).toBe(true);
-    });
-
-    it('anonymous can read public but not comment', () => {
-      const s = resolveScope('public', undefined);
-      expect(s.canWrite).toBe(false);
-      expect(s.canComment).toBe(false);
-    });
+    const team = resolveScope('team:catedra', user());
+    expect(team.basePath).toBe(join(STORAGE_DIR, 'orgs', 'facu-a', 'teams', 'catedra'));
+    expect(team.id).toBe('facu-a/team:catedra');
   });
 
-  describe('me scope', () => {
-    it('authenticated user gets own scope', () => {
-      const s = resolveScope('me', memberUser);
-      expect(s.kind).toBe('me');
-      expect(s.id).toBe('me:2');
-      expect(s.canWrite).toBe(true);
-    });
-
-    it('throws 401 for anonymous', () => {
-      expect(() => resolveScope('me', undefined)).toThrow(ScopeError);
-      try { resolveScope('me', undefined); } catch (e) {
-        expect((e as ScopeError).status).toBe(401);
-      }
-    });
+  it('same team slug in two orgs never shares storage or comments', () => {
+    const a = resolveScope('team:catedra', user());
+    const b = resolveScope('team:catedra', user({ orgId: 2, orgSlug: 'facu-b' }));
+    expect(a.basePath).not.toBe(b.basePath);
+    expect(a.id).not.toBe(b.id);
   });
 
-  describe('team scope', () => {
-    it('member of team gets access', () => {
-      const s = resolveScope('team:dev', memberUser);
-      expect(s.kind).toBe('team');
-      expect(s.id).toBe('team:dev');
-      expect(s.canWrite).toBe(true);
-    });
-
-    it('throws 403 for non-member', () => {
-      const outsider: AuthUser = { userId: 3, username: 'x', role: 'member', teams: [] };
-      expect(() => resolveScope('team:dev', outsider)).toThrow(ScopeError);
-      try { resolveScope('team:dev', outsider); } catch (e) {
-        expect((e as ScopeError).status).toBe(403);
-      }
-    });
-
-    it('throws 401 for anonymous', () => {
-      expect(() => resolveScope('team:dev', undefined)).toThrow(ScopeError);
-    });
-
-    it('rejects invalid slugs', () => {
-      expect(() => resolveScope('team:INVALID', adminUser)).toThrow(ScopeError);
-      expect(() => resolveScope('team:', adminUser)).toThrow(ScopeError);
-      expect(() => resolveScope('team:-bad', adminUser)).toThrow(ScopeError);
-    });
+  it('requires auth and membership for private scopes', () => {
+    expect(status(() => resolveScope('me', undefined))).toBe(401);
+    expect(status(() => resolveScope('team:catedra', undefined))).toBe(401);
+    expect(status(() => resolveScope('team:otro', user()))).toBe(403);
+    expect(status(() => resolveScope('team:../x', user()))).toBe(400);
   });
 
-  it('throws 400 for unknown scope', () => {
-    expect(() => resolveScope('unknown', adminUser)).toThrow(ScopeError);
+  it('public: admins of the org write, its members comment', () => {
+    const admin = resolveScope('public', user({ role: 'admin' }));
+    expect(admin.basePath).toBe(join(STORAGE_DIR, 'orgs', 'facu-a', 'public'));
+    expect(admin).toMatchObject({ id: 'facu-a/public', canWrite: true, canComment: true });
+    expect(resolveScope('public', user())).toMatchObject({ canWrite: false, canComment: true });
+  });
+
+  it('public of another org is read-only, even for its admins', () => {
+    const other = resolveScope('public:facu-b', user({ role: 'admin' }));
+    expect(other).toMatchObject({ id: 'facu-b/public', canWrite: false, canComment: false });
+    expect(resolveScope('public:facu-b', undefined)).toMatchObject({ canWrite: false, canComment: false });
+  });
+
+  it('should refuse private scopes when the account belongs to no org', () => {
+    const noOrg = user({ orgId: null, orgSlug: null, orgName: null, role: null, teams: [] });
+    expect(status(() => resolveScope('me', noOrg))).toBe(403);
+    expect(status(() => resolveScope('public', noOrg))).toBe(403);
+    expect(resolveScope('public:facu-a', noOrg)).toMatchObject({ canWrite: false, canComment: false });
+  });
+
+  it('public without an org needs a session; bad org slugs are rejected', () => {
+    expect(status(() => resolveScope('public', undefined))).toBe(401);
+    expect(status(() => resolveScope('public:../../etc', undefined))).toBe(400);
   });
 });

@@ -1,11 +1,19 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
-import { authQueryOptions } from '../hooks/useAuth';
+import { authQueryOptions, useAuth } from '../hooks/useAuth';
+
+const GOOGLE_ERRORS: Record<string, string> = {
+  google: 'No se pudo completar el ingreso con Google. Proba de nuevo.',
+  google_off: 'El ingreso con Google no esta configurado.',
+  google_rate: 'Demasiados ingresos seguidos. Espera unos minutos y proba de nuevo.',
+};
 
 export function LoginPage() {
-  const [error, setError] = useState('');
+  const [params] = useSearchParams();
+  const { googleEnabled } = useAuth();
+  const [error, setError] = useState(GOOGLE_ERRORS[params.get('error') ?? ''] ?? '');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -60,6 +68,14 @@ export function LoginPage() {
             <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13 }}>
               {error}
             </div>
+          )}
+          {googleEnabled && (
+            <>
+              <a href="/api/auth/google" style={{ display: 'block', textAlign: 'center', padding: '10px 14px', border: '1px solid var(--border-input)', borderRadius: 10, fontSize: 14, fontWeight: 600, color: 'var(--text)', background: 'var(--bg-input)', textDecoration: 'none', marginBottom: 16 }}>
+                Continuar con Google
+              </a>
+              <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>o con usuario y contrasena</p>
+            </>
           )}
           <form onSubmit={handleSubmit}>
             <label htmlFor="login-user" style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4, color: 'var(--text-secondary)' }}>Usuario</label>

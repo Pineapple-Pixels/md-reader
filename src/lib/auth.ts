@@ -1,25 +1,34 @@
 import jwt from 'jsonwebtoken';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, CookieOptions } from 'express';
 import { JWT_SECRET } from './config.js';
 import { findByUsername, verifyPassword } from './users.js';
 import type { UserRole } from './users.js';
 import { listTeamsForUser } from './teams.js';
+import { getMembership, defaultOrgId } from './orgs.js';
+import { sql } from './db.js';
 import type { TeamMembership } from './teams.js';
 
 const TOKEN_EXPIRY = '7d';
 const COOKIE_NAME = 'docs_token';
 
-// `AuthPayload` es lo que vive dentro del JWT. `AuthUser` es lo que cuelga
-// de `req.user`: el payload hidratado con teams desde la DB. Los hacemos
-// distintos porque no queremos reemitir el token cuando cambian los
-// memberships.
+/** Lives in the JWT: who you are and which of your organizations the session is in (null: none). */
 export type AuthPayload = {
   userId: number;
   username: string;
-  role: UserRole;
+  orgId: number | null;
 };
 
-export type AuthUser = AuthPayload & {
+/**
+ * `req.user`: the payload checked against the DB. Org fields are null when the account
+ * belongs to no org or is no longer a member of the session's org; role is the role there.
+ */
+export type AuthUser = {
+  userId: number;
+  username: string;
+  orgId: number | null;
+  orgSlug: string | null;
+  orgName: string | null;
+  role: UserRole | null;
   teams: TeamMembership[];
 };
 
@@ -35,19 +44,29 @@ function readCookie(req: Request, name: string): string | undefined {
 // propaguen solos sin necesidad de invalidacion cross-process.
 const HYDRATE_TTL_MS = 60_000;
 type CacheEntry = { user: AuthUser; expiresAt: number };
-const hydrateCache = new Map<number, CacheEntry>();
+const hydrateCache = new Map<string, CacheEntry>();
 
-async function hydrateUser(payload: AuthPayload): Promise<AuthUser> {
-  const cached = hydrateCache.get(payload.userId);
+/** null when the account no longer exists (its tokens stop working). */
+export async function hydrateUser(payload: AuthPayload): Promise<AuthUser | null> {
+  const key = `${payload.userId}:${payload.orgId ?? '-'}`;
+  const cached = hydrateCache.get(key);
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    // Refrescamos username/role desde el payload por si el JWT es nuevo con
-    // datos distintos, pero los teams vienen del cache.
-    return { ...payload, teams: cached.user.teams };
-  }
-  const teams = await listTeamsForUser(payload.userId);
-  const user: AuthUser = { ...payload, teams };
-  hydrateCache.set(payload.userId, { user, expiresAt: now + HYDRATE_TTL_MS });
+  if (cached && cached.expiresAt > now) return { ...cached.user, username: payload.username };
+
+  const exists = await sql`SELECT 1 FROM users WHERE id = ${payload.userId}`;
+  if (exists.count === 0) return null;
+
+  const m = payload.orgId === null ? null : await getMembership(payload.userId, payload.orgId);
+  const user: AuthUser = {
+    userId: payload.userId,
+    username: payload.username,
+    orgId: m ? m.orgId : null,
+    orgSlug: m?.slug ?? null,
+    orgName: m?.name ?? null,
+    role: m?.role ?? null,
+    teams: m ? await listTeamsForUser(payload.userId, m.orgId) : [],
+  };
+  hydrateCache.set(key, { user, expiresAt: now + HYDRATE_TTL_MS });
   return user;
 }
 
@@ -55,12 +74,39 @@ async function hydrateUser(payload: AuthPayload): Promise<AuthUser> {
 // en el mismo proceso (p.ej. si agregamos admin UI). En prod los CLI
 // corren en proceso aparte; la staleness se limita al TTL.
 export function invalidateHydrateCache(userId: number): void {
-  hydrateCache.delete(userId);
+  for (const key of hydrateCache.keys()) {
+    if (key.startsWith(`${userId}:`)) hydrateCache.delete(key);
+  }
+}
+
+export function signSession(user: { id: number; username: string }, orgId: number | null): string {
+  const payload: AuthPayload = { userId: user.id, username: user.username, orgId };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+}
+
+/** A session token opened in the user's default org (last used, else oldest, else none). */
+export async function signDefaultSession(user: { id: number; username: string }): Promise<string> {
+  return signSession(user, await defaultOrgId(user.id));
+}
+
+// lax (not strict) so the session survives the top-level redirect back from Google.
+const SESSION_COOKIE: CookieOptions = {
+  httpOnly: true,
+  secure: process.env['NODE_ENV'] === 'production',
+  sameSite: 'lax',
+};
+
+export function setSessionCookie(res: Response, token: string): void {
+  res.cookie(COOKIE_NAME, token, { ...SESSION_COOKIE, maxAge: 7 * 24 * 60 * 60 * 1000 });
+}
+
+export function clearSessionCookie(res: Response): void {
+  res.clearCookie(COOKIE_NAME, SESSION_COOKIE);
 }
 
 export async function login(username: string, password: string): Promise<string | null> {
   const user = await findByUsername(username);
-  if (!user) {
+  if (!user?.passwordHash) {
     // Dummy compare para equiparar tiempos entre "user no existe" y "password mal".
     // Evita user enumeration via timing.
     await verifyPassword(password, '$2a$12$CwTycUXWue0Thq9StjUM0uJ8.fCSFCnU6H1kJq7wX3dMwCqYl2zRa');
@@ -68,22 +114,17 @@ export async function login(username: string, password: string): Promise<string 
   }
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) return null;
-  const payload: AuthPayload = {
-    userId: user.id,
-    username: user.username,
-    role: user.role,
-  };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+  return signDefaultSession(user);
 }
 
 export function verifyToken(token: string): AuthPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (typeof decoded !== 'object' || decoded === null) return null;
-    const { userId, username, role } = decoded as Record<string, unknown>;
+    const { userId, username, orgId } = decoded as Record<string, unknown>;
     if (typeof userId !== 'number' || typeof username !== 'string') return null;
-    if (role !== 'admin' && role !== 'member') return null;
-    return { userId, username, role };
+    if (orgId !== null && typeof orgId !== 'number') return null;
+    return { userId, username, orgId };
   } catch {
     return null;
   }
@@ -98,9 +139,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const decoded = verifyToken(token);
     if (decoded) {
       try {
-        req.user = await hydrateUser(decoded);
-        next();
-        return;
+        const user = await hydrateUser(decoded);
+        if (user) {
+          req.user = user;
+          next();
+          return;
+        }
       } catch (err) {
         next(err);
         return;
@@ -119,7 +163,8 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   const decoded = verifyToken(token);
   if (!decoded) { next(); return; }
   try {
-    req.user = await hydrateUser(decoded);
+    const user = await hydrateUser(decoded);
+    if (user) req.user = user;
     next();
   } catch (err) {
     next(err);

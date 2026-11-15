@@ -24,3 +24,9 @@
     to { opacity: 1; }
   }
 }
+
+@media print {
+  .app-shell { display: block; height: auto; }
+  .app-body { display: block; overflow: visible; }
+  .app-main { overflow: visible; background: none; }
+}

@@ -5,6 +5,7 @@
 
 import { createUser, findByUsername } from '../src/lib/users.js';
 import { createTeam, findBySlug, addMember } from '../src/lib/teams.js';
+import { requireOrg, addOrgMember } from '../src/lib/orgs.js';
 import { closeDb } from '../src/lib/db.js';
 
 const TEAM_SLUG = 'team-ai';
@@ -24,12 +25,13 @@ const USERS: { username: string; password: string }[] = [
 ];
 
 async function main(): Promise<void> {
+  const org = await requireOrg(undefined);
   // 1. Crear el team si no existe
-  let team = await findBySlug(TEAM_SLUG);
+  let team = await findBySlug(org.id, TEAM_SLUG);
   if (team) {
     console.log(`[seed] team ya existe: ${TEAM_SLUG}`);
   } else {
-    team = await createTeam({ slug: TEAM_SLUG, name: TEAM_NAME });
+    team = await createTeam(org.id, { slug: TEAM_SLUG, name: TEAM_NAME });
     console.log(`[seed] team creado: ${team.slug}`);
   }
 
@@ -39,10 +41,11 @@ async function main(): Promise<void> {
     if (existing) {
       console.log(`[seed] user ya existe, saltando creacion: ${username}`);
     } else {
-      await createUser({ username, password, role: 'member' });
+      const user = await createUser({ username, password });
+      await addOrgMember(org.id, user.id, 'member');
       console.log(`[seed] user creado: ${username}`);
     }
-    await addMember(TEAM_SLUG, username, 'member');
+    await addMember(org.id, TEAM_SLUG, username, 'member');
     console.log(`[seed] ${username} → ${TEAM_SLUG}`);
   }
 

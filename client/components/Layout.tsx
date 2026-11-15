@@ -3,6 +3,7 @@ import { Outlet, useParams, Navigate } from 'react-router-dom';
 import type { Scope } from '@shared/api';
 import { ScopeProvider } from '../hooks/useScope';
 import { useAuth } from '../hooks/useAuth';
+import { logout } from '../hooks/logout';
 import { SearchModal } from './SearchModal';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
@@ -18,8 +19,8 @@ interface ScopeLayoutProps {
 }
 
 export function ScopeLayout({ kind }: ScopeLayoutProps) {
-  const { slug } = useParams<{ slug?: string }>();
-  const { isAuthenticated, isLoading, isFetching, teams } = useAuth();
+  const { slug, org } = useParams<{ slug?: string; org?: string }>();
+  const { isAuthenticated, isLoading, isFetching, teams, org: currentOrg, displayName, user } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
   const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
@@ -35,6 +36,7 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />;
     }
+    if (!currentOrg) return <NoOrgScreen name={displayName || user} />;
   }
 
   // Para team: validamos que el user sea miembro. Si no, redirigimos a /me.
@@ -47,7 +49,7 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
   const scope: Scope =
     kind === 'me' ? { kind: 'me' } :
     kind === 'team' ? { kind: 'team', slug: slug! } :
-    { kind: 'public' };
+    { kind: 'public', org: org! };
 
   return (
     <ScopeProvider scope={scope}>
@@ -65,5 +67,19 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
       </div>
       {isAuthenticated && <SearchModal />}
     </ScopeProvider>
+  );
+}
+
+/** Signed in, but no organization has invited this account yet. */
+function NoOrgScreen({ name }: { name: string | null }) {
+  return (
+    <div className="container" style={{ textAlign: 'center', paddingTop: 80 }}>
+      <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Hola{name ? `, ${name}` : ''}</h1>
+      <p style={{ color: 'var(--text-secondary)', maxWidth: 440, margin: '0 auto 24px' }}>
+        Tu cuenta ya esta creada, pero todavia no perteneces a ninguna organizacion.
+        Pedile a un admin que te invite con tu email; cuando lo haga, volve a entrar.
+      </p>
+      <button className="admin-btn" onClick={logout}>Salir</button>
+    </div>
   );
 }

@@ -39,24 +39,24 @@ export function isValidSlug(slug: string): boolean {
   return SLUG_RE.test(slug) && slug.length <= 50;
 }
 
-export async function findBySlug(slug: string): Promise<Team | null> {
+export async function findBySlug(orgId: number, slug: string): Promise<Team | null> {
   const rows = await sql<TeamRow[]>`
     SELECT id, slug, name, created_at
     FROM teams
-    WHERE LOWER(slug) = LOWER(${slug})
+    WHERE LOWER(slug) = LOWER(${slug}) AND org_id = ${orgId}
     LIMIT 1
   `;
   const row = rows[0];
   return row ? toTeam(row) : null;
 }
 
-export async function createTeam(params: { slug: string; name: string }): Promise<Team> {
+export async function createTeam(orgId: number, params: { slug: string; name: string }): Promise<Team> {
   if (!isValidSlug(params.slug)) {
     throw new Error(`slug invalido: ${params.slug} (solo lowercase, numeros y guion)`);
   }
   const rows = await sql<TeamRow[]>`
-    INSERT INTO teams (slug, name)
-    VALUES (${params.slug}, ${params.name})
+    INSERT INTO teams (slug, name, org_id)
+    VALUES (${params.slug}, ${params.name}, ${orgId})
     RETURNING id, slug, name, created_at
   `;
   const row = rows[0];
@@ -64,20 +64,21 @@ export async function createTeam(params: { slug: string; name: string }): Promis
   return toTeam(row);
 }
 
-export async function deleteTeam(slug: string): Promise<boolean> {
+export async function deleteTeam(orgId: number, slug: string): Promise<boolean> {
   // FK cascada elimina team_members automaticamente.
-  const result = await sql`DELETE FROM teams WHERE LOWER(slug) = LOWER(${slug})`;
+  const result = await sql`DELETE FROM teams WHERE LOWER(slug) = LOWER(${slug}) AND org_id = ${orgId}`;
   return result.count > 0;
 }
 
-export async function listTeams(opts?: { limit?: number; offset?: number }): Promise<{ data: Team[]; total: number }> {
-  const countRows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM teams`;
+export async function listTeams(orgId: number, opts?: { limit?: number; offset?: number }): Promise<{ data: Team[]; total: number }> {
+  const countRows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM teams WHERE org_id = ${orgId}`;
   const total = Number(countRows[0]?.count ?? '0');
   const limit = opts?.limit ?? total;
   const offset = opts?.offset ?? 0;
   const rows = await sql<TeamRow[]>`
     SELECT id, slug, name, created_at
     FROM teams
+    WHERE org_id = ${orgId}
     ORDER BY slug ASC
     LIMIT ${limit} OFFSET ${offset}
   `;
@@ -86,12 +87,13 @@ export async function listTeams(opts?: { limit?: number; offset?: number }): Pro
 
 // ----- memberships -----
 
-export async function addMember(teamSlug: string, username: string, role: TeamRole = 'member'): Promise<void> {
-  // Resolvemos team y user en una sola query para evitar roundtrip + race.
+export async function addMember(orgId: number, teamSlug: string, username: string, role: TeamRole = 'member'): Promise<void> {
   const rows = await sql<{ team_id: number; user_id: number }[]>`
     SELECT t.id AS team_id, u.id AS user_id
-    FROM teams t, users u
-    WHERE LOWER(t.slug) = LOWER(${teamSlug})
+    FROM teams t
+    JOIN org_members m ON m.org_id = t.org_id
+    JOIN users u ON u.id = m.user_id
+    WHERE LOWER(t.slug) = LOWER(${teamSlug}) AND t.org_id = ${orgId}
       AND LOWER(u.username) = LOWER(${username})
   `;
   const row = rows[0];
@@ -103,10 +105,10 @@ export async function addMember(teamSlug: string, username: string, role: TeamRo
   `;
 }
 
-export async function removeMember(teamSlug: string, username: string): Promise<boolean> {
+export async function removeMember(orgId: number, teamSlug: string, username: string): Promise<boolean> {
   const result = await sql`
     DELETE FROM team_members
-    WHERE team_id = (SELECT id FROM teams WHERE LOWER(slug) = LOWER(${teamSlug}))
+    WHERE team_id = (SELECT id FROM teams WHERE LOWER(slug) = LOWER(${teamSlug}) AND org_id = ${orgId})
       AND user_id = (SELECT id FROM users WHERE LOWER(username) = LOWER(${username}))
   `;
   return result.count > 0;
@@ -114,23 +116,25 @@ export async function removeMember(teamSlug: string, username: string): Promise<
 
 // Lista todos los teams a los que pertenece un user, con su rol en cada uno.
 // Se consume desde auth.ts para hidratar req.user con los memberships.
-export async function listTeamsForUser(userId: number): Promise<TeamMembership[]> {
+/** Teams of one org the user is in; only counts while they are still a member of that org. */
+export async function listTeamsForUser(userId: number, orgId: number): Promise<TeamMembership[]> {
   const rows = await sql<{ slug: string; name: string; role: TeamRole }[]>`
     SELECT t.slug, t.name, tm.role
     FROM team_members tm
     JOIN teams t ON t.id = tm.team_id
-    WHERE tm.user_id = ${userId}
+    JOIN org_members m ON m.user_id = tm.user_id AND m.org_id = t.org_id
+    WHERE tm.user_id = ${userId} AND t.org_id = ${orgId}
     ORDER BY t.slug ASC
   `;
   return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role }));
 }
 
-export async function listMembers(teamSlug: string, opts?: { limit?: number; offset?: number }): Promise<{ data: { username: string; role: TeamRole }[]; total: number }> {
+export async function listMembers(orgId: number, teamSlug: string, opts?: { limit?: number; offset?: number }): Promise<{ data: { username: string; role: TeamRole }[]; total: number }> {
   const countRows = await sql<{ count: string }[]>`
     SELECT COUNT(*)::text AS count
     FROM team_members tm
     JOIN teams t ON t.id = tm.team_id
-    WHERE LOWER(t.slug) = LOWER(${teamSlug})
+    WHERE LOWER(t.slug) = LOWER(${teamSlug}) AND t.org_id = ${orgId}
   `;
   const total = Number(countRows[0]?.count ?? '0');
   const limit = opts?.limit ?? total;
@@ -140,7 +144,7 @@ export async function listMembers(teamSlug: string, opts?: { limit?: number; off
     FROM team_members tm
     JOIN users u ON u.id = tm.user_id
     JOIN teams t ON t.id = tm.team_id
-    WHERE LOWER(t.slug) = LOWER(${teamSlug})
+    WHERE LOWER(t.slug) = LOWER(${teamSlug}) AND t.org_id = ${orgId}
     ORDER BY u.username ASC
     LIMIT ${limit} OFFSET ${offset}
   `;

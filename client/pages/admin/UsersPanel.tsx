@@ -42,12 +42,27 @@ export function UsersPanel({ toast, queryClient }: PanelProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
 
+  const { data: invitesResponse } = useQuery<{ data: { email: string; role: string; createdAt: string }[] }>({
+    queryKey: ['admin', 'invites'],
+    queryFn: () => adminFetch('/invites'),
+  });
+  const invites = invitesResponse?.data ?? [];
+
+  async function cancelInvite(email: string) {
+    try {
+      await adminFetch(`/invites/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'invites'] });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Error', 'error');
+    }
+  }
+
   async function handleDelete(username: string) {
-    if (!confirm(`Eliminar usuario "${username}"?`)) return;
+    if (!confirm(`Quitar a "${username}" de la organizacion? Su cuenta y sus otras organizaciones no se tocan.`)) return;
     try {
       await adminFetch(`/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-      toast('Usuario eliminado', 'success');
+      toast('Quitado de la organizacion', 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Error', 'error');
     }
@@ -58,30 +73,37 @@ export function UsersPanel({ toast, queryClient }: PanelProps) {
   return (
     <div>
       <div className="admin-section-header">
-        <h2>Usuarios ({users.length})</h2>
+        <h2>Miembros ({users.length})</h2>
         <button className="admin-btn primary" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? 'Cancelar' : '+ Crear usuario'}
+          {showCreate ? 'Cancelar' : '+ Invitar o crear'}
         </button>
       </div>
       {showCreate && (
         <CreateUserForm
-          onCreated={() => {
+          onCreated={(result) => {
             setShowCreate(false);
             queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-            toast('Usuario creado', 'success');
+            queryClient.invalidateQueries({ queryKey: ['admin', 'invites'] });
+            toast(
+              result === 'invited' ? 'Invitacion creada: entra a la org la primera vez que ingrese con Google'
+                : result === 'added' ? 'Ya tenia cuenta: agregado a la organizacion'
+                : 'Usuario creado',
+              'success',
+            );
           }}
           onError={(msg) => toast(msg, 'error')}
         />
       )}
       <table className="admin-table">
         <thead>
-          <tr><th>Username</th><th>Nombre</th><th>Rol</th><th>Creado</th><th>Acciones</th></tr>
+          <tr><th>Username</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Creado</th><th>Acciones</th></tr>
         </thead>
         <tbody>
           {users.map((u) => (
             <tr key={u.id}>
               <td><strong>{u.username}</strong></td>
               <td>{u.displayName || <span className="text-muted">—</span>}</td>
+              <td>{u.email || <span className="text-muted">—</span>}</td>
               <td><span className={`role-badge ${u.role}`}>{u.role}</span></td>
               <td className="text-muted">{new Date(u.createdAt).toLocaleDateString('es-AR')}</td>
               <td className="admin-actions">
@@ -89,13 +111,31 @@ export function UsersPanel({ toast, queryClient }: PanelProps) {
                   Editar
                 </button>
                 <button className="admin-btn small danger" onClick={() => handleDelete(u.username)}>
-                  Eliminar
+                  Quitar
                 </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {invites.length > 0 && (
+        <>
+          <h3 style={{ margin: '20px 0 8px', fontSize: 15 }}>Invitaciones pendientes ({invites.length})</h3>
+          <table className="admin-table">
+            <thead><tr><th>Email</th><th>Rol</th><th>Enviada</th><th></th></tr></thead>
+            <tbody>
+              {invites.map((i) => (
+                <tr key={i.email}>
+                  <td>{i.email}</td>
+                  <td><span className={`role-badge ${i.role}`}>{i.role}</span></td>
+                  <td className="text-muted">{new Date(i.createdAt).toLocaleDateString('es-AR')}</td>
+                  <td className="admin-actions"><button className="admin-btn small" onClick={() => cancelInvite(i.email)}>Cancelar</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       {editingUser && (
         <EditUserForm
           username={editingUser}
@@ -113,7 +153,8 @@ export function UsersPanel({ toast, queryClient }: PanelProps) {
   );
 }
 
-function CreateUserForm({ onCreated, onError }: { onCreated: () => void; onError: (msg: string) => void }) {
+function CreateUserForm({ onCreated, onError }: { onCreated: (result: string) => void; onError: (msg: string) => void }) {
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -122,13 +163,21 @@ function CreateUserForm({ onCreated, onError }: { onCreated: () => void; onError
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!username.trim() || !password) return;
+    const invite = email.trim() !== '';
+    if (!invite && (!username.trim() || !password)) return;
     setSaving(true);
     try {
-      const body: Record<string, string> = { username: username.trim(), password, role };
+      const body: Record<string, string> = { role };
+      // An invite is only the email; a local account never carries one (it would be unverified).
+      if (invite) {
+        body.email = email.trim();
+      } else {
+        body.username = username.trim();
+        body.password = password;
+      }
       if (displayName.trim()) body.displayName = displayName.trim();
-      await adminFetch('/users', { method: 'POST', body: JSON.stringify(body) });
-      onCreated();
+      const res = await adminFetch<{ result: string }>('/users', { method: 'POST', body: JSON.stringify(body) });
+      onCreated(res.result);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Error al crear');
     }
@@ -138,8 +187,9 @@ function CreateUserForm({ onCreated, onError }: { onCreated: () => void; onError
   return (
     <form className="admin-form" onSubmit={handleSubmit}>
       <div className="admin-form-row">
-        <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label>
-        <label>Password<PasswordField value={password} onChange={setPassword} required minLength={4} /></label>
+        <label>Email (invitacion, entra con Google)<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <label>o Username (cuenta local)<input value={username} onChange={(e) => setUsername(e.target.value)} required={!email} disabled={!!email} /></label>
+        <label>Password<PasswordField value={password} onChange={setPassword} required={!email} minLength={4} /></label>
         <label>Nombre (opcional)<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
         <label>Rol
           <select value={role} onChange={(e) => setRole(e.target.value as 'member' | 'admin')}>

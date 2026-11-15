@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import {
   apiFetchScoped,
+  scopedUrl,
   scopeId,
   type Scope,
 } from '@shared/api';
@@ -14,7 +15,7 @@ import { useAuth } from './useAuth';
 
 interface ScopeContextValue {
   scope: Scope;
-  // Prefix de URL del scope: '/me', '/t/<slug>', '/pub'. Sirve para construir
+  // Prefix de URL del scope: '/me', '/t/<slug>', '/pub/<org>'. Sirve para construir
   // hrefs relativos al scope (ej. `${prefix}/doc/archivo.md`).
   urlPrefix: string;
   // Identificador estable para React Query keys ('me', 'team:<slug>', 'public').
@@ -29,10 +30,17 @@ export function ScopeProvider({ scope, children }: { scope: Scope; children: Rea
     urlPrefix:
       scope.kind === 'me' ? '/me' :
       scope.kind === 'team' ? `/t/${scope.slug}` :
-      '/pub',
+      `/pub/${scope.org}`,
     id: scopeId(scope),
   }), [scope]);
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
+}
+
+/** Organization whose documents this scope shows: the viewed org for public pages, else the user's. */
+export function useScopeOrg(): string | null {
+  const { scope } = useScope();
+  const { org } = useAuth();
+  return scope.kind === 'public' ? scope.org : org?.slug ?? null;
 }
 
 export function useScope(): ScopeContextValue {
@@ -61,4 +69,12 @@ export function useScopedFetch() {
       apiFetchScoped<T>(path, scope, init, anonymous),
     [scope, anonymous],
   );
+}
+
+/** Builds URLs of scoped endpoints (downloads, iframes) with the same public/anonymous rule as useScopedFetch. */
+export function useScopedUrl() {
+  const { scope } = useScope();
+  const { isAuthenticated } = useAuth();
+  const anonymous = scope.kind === 'public' && !isAuthenticated;
+  return useCallback((path: string) => scopedUrl(path, scope, anonymous), [scope, anonymous]);
 }

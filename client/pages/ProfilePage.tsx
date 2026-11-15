@@ -5,6 +5,7 @@ import { apiFetch } from '@shared/api';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useTheme } from '../hooks/useTheme';
+import { AppearanceSection } from '../components/AppearanceSection';
 
 // Pagina de perfil self-service: cualquier user logueado puede cambiar su
 // displayName y su password. El cambio de password exige la actual (defensa
@@ -187,6 +188,8 @@ export function ProfilePage() {
           </button>
         </div>
       </form>
+
+      <AppearanceSection />
     </div>
   );
 }
