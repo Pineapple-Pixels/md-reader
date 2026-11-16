@@ -80,3 +80,14 @@ export async function deleteOrigins(scopeId: string, path: string): Promise<void
   const prefix = `${path.replace(/[\\%_]/g, '\\$&')}/%`;
   await sql`DELETE FROM doc_origins WHERE scope_id = ${scopeId} AND (path = ${path} OR path LIKE ${prefix})`;
 }
+
+/** Re-keys the origin of a doc, or of every doc under a folder, from path `from` to `to`; stale rows at `to` are dropped. */
+export async function moveOrigins(scopeId: string, from: string, to: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`DELETE FROM doc_origins WHERE scope_id = ${scopeId} AND (path = ${to} OR left(path, ${to.length + 1}) = ${`${to}/`})`;
+    await tx`
+      UPDATE doc_origins SET path = ${to} || substr(path, ${from.length + 1})
+      WHERE scope_id = ${scopeId} AND (path = ${from} OR left(path, ${from.length + 1}) = ${`${from}/`})
+    `;
+  });
+}

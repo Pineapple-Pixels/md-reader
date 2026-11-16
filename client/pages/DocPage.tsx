@@ -8,6 +8,7 @@ import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/us
 import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
 import { HtmlFrame } from '../components/HtmlFrame';
 import { isMarkdownKind } from '@shared/doc-types';
+import { ApiError } from '@shared/api';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction, type ToolbarItem } from '../components/Toolbar';
 import { sanitizeDocHtml } from '../sanitize';
@@ -33,6 +34,7 @@ export function DocPage() {
   const file = decodeURIComponent(location.pathname.replace(docPrefix, ''));
 
   const openTab = useNavStore((s) => s.openTab);
+  const forget = useNavStore((s) => s.forget);
   useEffect(() => { openTab(file); }, [file, openTab]);
 
   const { data, isLoading, error } = useQuery<RenderResponse>({
@@ -231,6 +233,19 @@ export function DocPage() {
     }
   }
 
+  async function handleArchive() {
+    try {
+      await scopedFetch('/archive', { method: 'POST', body: JSON.stringify({ file }) });
+      forget(file);
+      toast('Archivado. Lo podes restaurar desde Archivados', 'success');
+      queryClient.invalidateQueries({ queryKey: ['docs', scopeId] });
+      queryClient.invalidateQueries({ queryKey: ['archived', scopeId] });
+      navigate(urlPrefix);
+    } catch (err) {
+      toast(err instanceof ApiError && err.status === 409 ? 'Ya hay un archivado con ese nombre' : 'Error al archivar', 'error');
+    }
+  }
+
   async function handleDelete() {
     if (!confirm('Eliminar este documento?')) return;
     try {
@@ -283,6 +298,10 @@ export function DocPage() {
     shareItems.push({ label: 'Publicar en Publicos', onClick: () => handlePublish(false) });
   }
   actions.push({ label: 'Compartir', menu: shareItems });
+  // The index of the public scope has no Archivados list, so archiving stays in me/team.
+  if (canWrite && scope.kind !== 'public') {
+    actions.push({ label: 'Archivar', onClick: handleArchive });
+  }
   if (canWrite) {
     actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
   }

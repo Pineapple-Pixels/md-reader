@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import postgres from 'postgres';
-import { mkdtemp, rm, readFile } from 'fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import express from 'express';
@@ -19,6 +19,7 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
   let server: Server;
   let base: string;
   let ana: string;
+  let anaId: number;
   let luis: string;
   let db: typeof import('../src/lib/db.js');
 
@@ -41,6 +42,7 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
     const def = await orgs.requireOrg('default');
     const other = await orgs.createOrg({ slug: 'otra', name: 'Otra' });
     const anaU = await users.createUser({ username: 'ana', password: 'secreto1' });
+    anaId = anaU.id;
     const luisU = await users.createUser({ username: 'luis', password: 'secreto1' });
     await orgs.addOrgMember(def.id, anaU.id, 'admin');
     await orgs.addOrgMember(def.id, luisU.id, 'member');
@@ -299,5 +301,116 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
 
     // Assert
     expect(await origins()).toHaveLength(0);
+  });
+
+  // ---------- Archive ----------
+
+  const names = async (path: string) => ((await (await api(ana, path)).json()) as { name: string }[]).map((f) => f.name);
+
+  it('should archive a doc out of every list and restore it with its history and comments', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'archivo/guardar.md', content: '# uno' });
+    await api(ana, '/push?scope=me', { file: 'archivo/guardar.md', content: '# dos' });
+    await api(ana, '/comments?scope=me', { file: 'archivo/guardar.md', text: 'ojo' });
+
+    // Act
+    const archived = await api(ana, '/archive?scope=me', { file: 'archivo/guardar.md' });
+
+    // Assert
+    expect(archived.status).toBe(200);
+    expect(await names('/docs?scope=me')).not.toContain('archivo/guardar.md');
+    const index = (await (await api(ana, '/search-index?scope=me')).json()) as { file: string }[];
+    expect(index.map((e) => e.file)).not.toContain('archivo/guardar.md');
+    expect(await names('/archived?scope=me')).toContain('archivo/guardar.md');
+
+    // Act
+    const restored = await api(ana, '/unarchive?scope=me', { file: 'archivo/guardar.md' });
+
+    // Assert
+    expect(restored.status).toBe(200);
+    expect((await pull('me', 'archivo/guardar.md')).content).toBe('# dos');
+    expect(await names('/archived?scope=me')).not.toContain('archivo/guardar.md');
+    expect(await (await api(ana, '/versions?scope=me&file=archivo/guardar.md')).json()).toHaveLength(1);
+    const comments = (await (await api(ana, '/comments?scope=me&file=archivo/guardar.md')).json()) as { data: { text: string }[] };
+    expect(comments.data.map((c) => c.text)).toEqual(['ojo']);
+  });
+
+  it('should archive a whole folder and archive the same name again after restoring it', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'carpeta/a.md', content: 'a' });
+    await api(ana, '/push?scope=me', { file: 'carpeta/sub/b.html', content: '<p>b</p>' });
+
+    // Act
+    expect((await api(ana, '/archive?scope=me', { file: 'carpeta' })).status).toBe(200);
+
+    // Assert
+    expect((await names('/docs?scope=me')).filter((n) => n.startsWith('carpeta/'))).toEqual([]);
+    expect((await names('/archived?scope=me')).filter((n) => n.startsWith('carpeta/')).sort()).toEqual(['carpeta/a.md', 'carpeta/sub/b.html']);
+
+    // Restoring file by file leaves no empty folder behind in the archive, so the name is free again.
+    expect((await api(ana, '/unarchive?scope=me', { file: 'carpeta/a.md' })).status).toBe(200);
+    expect((await api(ana, '/unarchive?scope=me', { file: 'carpeta/sub/b.html' })).status).toBe(200);
+    expect((await api(ana, '/archive?scope=me', { file: 'carpeta' })).status).toBe(200);
+    expect((await api(ana, '/unarchive?scope=me', { file: 'carpeta' })).status).toBe(200);
+    expect((await names('/docs?scope=me')).filter((n) => n.startsWith('carpeta/')).sort()).toEqual(['carpeta/a.md', 'carpeta/sub/b.html']);
+  });
+
+  it('should never overwrite when the archive or the scope already has that name', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'choque.md', content: 'primero' });
+    await api(ana, '/archive?scope=me', { file: 'choque.md' });
+    await api(ana, '/push?scope=me', { file: 'choque.md', content: 'segundo' });
+
+    // Act
+    const archiveAgain = await api(ana, '/archive?scope=me', { file: 'choque.md' });
+    const restore = await api(ana, '/unarchive?scope=me', { file: 'choque.md' });
+
+    // Assert
+    expect(archiveAgain.status).toBe(409);
+    expect(restore.status).toBe(409);
+    expect((await pull('me', 'choque.md')).content).toBe('segundo');
+    expect(await names('/archived?scope=me')).toContain('choque.md');
+  });
+
+  it('should keep an archived doc comments and history apart from a new doc with the same name', async () => {
+    // Arrange
+    const comments = async () =>
+      ((await (await api(ana, '/comments?scope=me&file=gemelo.md')).json()) as { data: { text: string }[] }).data.map((c) => c.text);
+    const versions = async () => ((await (await api(ana, '/versions?scope=me&file=gemelo.md')).json()) as unknown[]).length;
+    await api(ana, '/push?scope=me', { file: 'gemelo.md', content: 'v1' });
+    await api(ana, '/push?scope=me', { file: 'gemelo.md', content: 'v2' });
+    await api(ana, '/comments?scope=me', { file: 'gemelo.md', text: 'del archivado' });
+    await api(ana, '/archive?scope=me', { file: 'gemelo.md' });
+
+    // Act
+    await api(ana, '/push?scope=me', { file: 'gemelo.md', content: 'nuevo' });
+    const newDocComments = await comments();
+    const newDocVersions = await versions();
+    await api(ana, '/delete?scope=me', { file: 'gemelo.md' }, 'DELETE');
+    const restored = await api(ana, '/unarchive?scope=me', { file: 'gemelo.md' });
+
+    // Assert
+    expect(newDocComments).toEqual([]);
+    expect(newDocVersions).toBe(0);
+    expect(restored.status).toBe(200);
+    expect((await pull('me', 'gemelo.md')).content).toBe('v2');
+    expect(await comments()).toEqual(['del archivado']);
+    // v1 from before archiving, plus 'nuevo', which the delete of the new doc kept as its backup.
+    const ids = (await (await api(ana, '/versions?scope=me&file=gemelo.md')).json()) as { id: string }[];
+    const texts = await Promise.all(ids.map(async (v) =>
+      ((await (await api(ana, `/version?scope=me&file=gemelo.md&id=${encodeURIComponent(v.id)}`)).json()) as { content: string }).content));
+    expect(texts.sort()).toEqual(['nuevo', 'v1']);
+  });
+
+  it('should refuse archiving without write access, unsafe paths and missing docs', async () => {
+    expect((await api(luis, '/archive?scope=public', { file: 'x.md' })).status).toBe(403);
+    expect((await api(luis, '/archived?scope=public')).status).toBe(403);
+    expect((await api(ana, '/archive?scope=me', { file: '../x.md' })).status).toBe(400);
+    expect((await api(ana, '/archive?scope=me', { file: '.versions' })).status).toBe(400);
+    expect((await api(ana, '/unarchive?scope=me', { file: 'a/../../x.md' })).status).toBe(400);
+    expect((await api(ana, '/archive?scope=me', { file: 'no-existe.md' })).status).toBe(404);
+    await writeFile(join(storage, 'orgs', 'default', 'users', String(anaId), 'notas.txt'), 'x');
+    expect((await api(ana, '/archive?scope=me', { file: 'notas.txt' })).status).toBe(400);
+    expect((await api(ana, '/unarchive?scope=me', { file: 'no-existe.md' })).status).toBe(404);
   });
 });

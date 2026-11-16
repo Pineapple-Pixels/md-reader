@@ -6,8 +6,8 @@ import archiver from 'archiver';
 import { z } from 'zod';
 import { renderDoc, sendHtmlFrame } from '../lib/render.js';
 import { sendDocx } from '../lib/docx.js';
-import { copyDocs, deleteOrigins, getOrigin, isSafeRelPath } from '../lib/share.js';
-import { docKind } from '../../shared/doc-types.js';
+import { copyDocs, deleteOrigins, getOrigin, isSafeRelPath, moveOrigins } from '../lib/share.js';
+import { docKind, isDocFile } from '../../shared/doc-types.js';
 import {
   resolveDoc,
   getFiles,
@@ -22,6 +22,10 @@ import {
   resolveScope,
   publicScope,
   ScopeError,
+  archiveDir,
+  moveEntry,
+  moveVersions,
+  ARCHIVE_PREFIX,
 } from '../lib/storage.js';
 import type { ResolvedScope } from '../lib/storage.js';
 import {
@@ -30,6 +34,7 @@ import {
   getComment,
   deleteComment,
   deleteAllComments,
+  moveComments,
 } from '../lib/comments.js';
 import { requireAuth } from '../lib/auth.js';
 import { getSearchIndex, invalidateSearchIndex } from '../lib/search-index.js';
@@ -414,6 +419,70 @@ router.delete('/delete', ah(async (req, res) => {
   invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));
+
+// Archive: a recoverable delete. The doc or folder moves to the scope's .archive and back.
+router.post('/archive', ah(async (req, res) => {
+  await moveArchive(req, res, 'archive');
+}));
+
+router.post('/unarchive', ah(async (req, res) => {
+  await moveArchive(req, res, 'unarchive');
+}));
+
+router.get('/archived', ah(async (req, res) => {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
+  res.json(await getFiles(archiveDir(scope.basePath)));
+}));
+
+async function moveArchive(req: import('express').Request, res: Response, direction: 'archive' | 'unarchive'): Promise<void> {
+  const scope = getScope(req, res);
+  if (!scope) return;
+  if (!assertWritable(scope, res)) return;
+  const parsed = FileBody.safeParse(req.body);
+  if (!parsed.success || !isSafeRelPath(parsed.data.file)) {
+    res.status(400).json({ error: 'Ruta invalida' });
+    return;
+  }
+  const { file } = parsed.data;
+  const archive = archiveDir(scope.basePath);
+  const live = resolveDoc(file, scope.basePath);
+  const archived = resolveDoc(file, archive);
+  if (!live || !archived) {
+    res.status(400).json({ error: 'Ruta invalida' });
+    return;
+  }
+  // Only docs and folders: the Archivados list could never show any other file to restore.
+  const source = await statOrNull(direction === 'archive' ? live : archived);
+  if (source?.isFile() && !isDocFile(file)) {
+    res.status(400).json({ error: 'Solo se archivan documentos y carpetas' });
+    return;
+  }
+  const archivedKey = `${ARCHIVE_PREFIX}/${file}`;
+  const [fromKey, toKey] = direction === 'archive' ? [file, archivedKey] : [archivedKey, file];
+  const rekey = async () => {
+    await moveComments(scope.id, fromKey, toKey);
+    await moveOrigins(scope.id, fromKey, toKey);
+    await moveVersions(scope.basePath, fromKey, toKey);
+  };
+  const result = direction === 'archive'
+    ? await moveEntry(live, archived, scope.basePath, rekey)
+    : await moveEntry(archived, live, archive, rekey);
+  if (result === 'not-found') {
+    res.status(404).json({ error: 'Archivo no encontrado' });
+    return;
+  }
+  if (result === 'conflict') {
+    res.status(409).json({
+      error: direction === 'archive' ? 'Ya hay un archivado con ese nombre' : 'Ya existe un documento con ese nombre',
+      conflict: true,
+    });
+    return;
+  }
+  invalidateSearchIndex(scope.id);
+  res.json({ ok: true });
+}
 
 // Project data (tree + initial page)
 router.get('/project', ah(async (req, res) => {
