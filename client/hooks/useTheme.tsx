@@ -24,6 +24,8 @@ function applyOrgAccent(accent: string | null): void {
 
 export function applyTheme(tokens: ThemeTokens): void {
   const root = document.documentElement;
+  // Hover transitions would otherwise animate every themed color, including controls inside the document.
+  root.classList.add('theme-switching');
   root.classList.toggle('dark', tokens.base === 'dark');
   root.classList.toggle('themed', tokens.colors !== null);
   for (const k of THEME_COLOR_KEYS) {
@@ -32,6 +34,8 @@ export function applyTheme(tokens: ThemeTokens): void {
   }
   if (tokens.colors) root.style.setProperty('--t-on-accent', readableOn(tokens.colors.accent));
   else root.style.removeProperty('--t-on-accent');
+  void getComputedStyle(root).color; // commit the new colors while transitions are off
+  root.classList.remove('theme-switching');
 }
 
 function readStorage(key: string): string | null {
