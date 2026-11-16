@@ -161,7 +161,7 @@ La DB tiene el proxy publico habilitado en puerto **5432**.
 | Port | `5432` |
 | Database | `mdreader` |
 | User | `mdreader` |
-| Password | `qPrkJEKH1UjOi258u95Zh2xJIqFKPozwoJEC5JD8YN28rcXUSmwCL69oWJR9wJId` |
+| Password | la de `mdreader-db` (config del servicio de Postgres en Coolify) |
 
 ### Opcion B — SSH tunnel (recomendado si no queres exponer el puerto)
 
@@ -180,7 +180,7 @@ La DB tiene el proxy publico habilitado en puerto **5432**.
 | Port | `5432` |
 | Database | `mdreader` |
 | User | `mdreader` |
-| Password | `qPrkJEKH1UjOi258u95Zh2xJIqFKPozwoJEC5JD8YN28rcXUSmwCL69oWJR9wJId` |
+| Password | la de `mdreader-db` (config del servicio de Postgres en Coolify) |
 
 ---
 
