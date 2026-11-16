@@ -196,25 +196,38 @@ export async function saveVersion(
 
 export type VersionEntry = { id: string; savedAt: string; size: number };
 
+// The legacy layout `.versions/<basename without .md>` is still read so older .md history stays reachable;
+// it is shared by every same-named .md doc of the scope.
+function readableVersionDirs(filePath: string, basePath: string): string[] {
+  const dirs = [versionsDir(filePath, basePath)];
+  if (extname(filePath) === '.md') dirs.push(join(basePath, '.versions', basename(filePath, '.md')));
+  return [...new Set(dirs)];
+}
+
 export async function listVersions(filePath: string, basePath: string): Promise<VersionEntry[]> {
-  const dir = versionsDir(filePath, basePath);
-  if (!existsSync(dir)) return [];
-  const names = (await readdir(dir)).filter((n) => VERSION_ID_RE.test(n)).sort().reverse();
-  return Promise.all(names.map(async (id) => {
-    const st = await stat(join(dir, id));
-    return { id, savedAt: st.mtime.toISOString(), size: st.size };
-  }));
+  const byId = new Map<string, VersionEntry>();
+  for (const dir of readableVersionDirs(filePath, basePath)) {
+    if (!existsSync(dir)) continue;
+    for (const id of (await readdir(dir)).filter((n) => VERSION_ID_RE.test(n))) {
+      if (byId.has(id)) continue;
+      const st = await stat(join(dir, id));
+      byId.set(id, { id, savedAt: st.mtime.toISOString(), size: st.size });
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.id.localeCompare(a.id));
 }
 
 /** Content of one version, or null when the id is malformed or missing. */
 export async function readVersion(filePath: string, basePath: string, id: string): Promise<string | null> {
   if (!VERSION_ID_RE.test(id)) return null;
-  try {
-    return await readFile(join(versionsDir(filePath, basePath), id), 'utf-8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
+  for (const dir of readableVersionDirs(filePath, basePath)) {
+    try {
+      return await readFile(join(dir, id), 'utf-8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
   }
+  return null;
 }
 
 export function contentHash(content: string): string {
@@ -232,6 +245,12 @@ export function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise
   fileLocks.set(filePath, tail);
   void tail.then(() => { if (fileLocks.get(filePath) === tail) fileLocks.delete(filePath); });
   return run;
+}
+
+/** Runs `fn` holding the lock of every path, taken in sorted order so two callers never deadlock. */
+export function withFileLocks<T>(filePaths: string[], fn: () => Promise<T>): Promise<T> {
+  const [first, ...rest] = [...new Set(filePaths)].sort();
+  return first === undefined ? fn() : withFileLock(first, () => withFileLocks(rest, fn));
 }
 
 /** Writes through a hidden temp file + rename, so readers never see a half-written doc. */

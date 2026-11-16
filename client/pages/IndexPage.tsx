@@ -1,4 +1,4 @@
-import { scopeToQueryParam } from '@shared/api';
+import { ApiError, scopeToQueryParam } from '@shared/api';
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -70,13 +70,13 @@ export function IndexPage() {
     try {
       await scopedFetch('/push', {
         method: 'POST',
-        body: JSON.stringify({ file, content }),
+        body: JSON.stringify({ file, content, createOnly: true }),
       });
       setNewFile('');
       refresh();
       toast('Documento creado', 'success');
-    } catch {
-      toast('Error al crear documento', 'error');
+    } catch (err) {
+      toast(err instanceof ApiError && err.status === 409 ? `Ya existe ${file}` : 'Error al crear documento', 'error');
     }
   }
 

@@ -128,6 +128,56 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
     expect((await api(ana, '/version?scope=me&file=a/clase.md&id=..%2F..%2Fsecret.md')).status).toBe(404);
   });
 
+  it('should list and read versions saved in the legacy by-name layout', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'viejo/legado.md', content: 'actual' });
+    const legacyDir = join(storage, 'orgs', 'default', 'users', String((await db.sql<{ id: number }[]>`SELECT id FROM users WHERE username = 'ana'`)[0]!.id), '.versions', 'legado');
+    const id = '2025-01-02T03-04-05-006Z.md';
+    await import('fs/promises').then((fs) => fs.mkdir(legacyDir, { recursive: true }).then(() => fs.writeFile(join(legacyDir, id), 'version vieja')));
+
+    // Act
+    const versions = (await (await api(ana, '/versions?scope=me&file=viejo/legado.md')).json()) as { id: string }[];
+    const old = (await (await api(ana, `/version?scope=me&file=viejo/legado.md&id=${id}`)).json()) as { content: string };
+
+    // Assert
+    expect(versions.map((v) => v.id)).toEqual([id]);
+    expect(old.content).toBe('version vieja');
+  });
+
+  it('should refuse to create a doc over an existing one when createOnly is set', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'unico.md', content: 'original' });
+
+    // Act
+    const res = await api(ana, '/push?scope=me', { file: 'unico.md', content: 'pisado', createOnly: true });
+    const fresh = await api(ana, '/push?scope=me', { file: 'nuevo.md', content: 'hola', createOnly: true });
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect((await pull('me', 'unico.md')).content).toBe('original');
+    expect(fresh.status).toBe(200);
+  });
+
+  it('should hold every lock of a multi-file operation until it finishes', async () => {
+    // Arrange
+    const { withFileLock, withFileLocks } = await import('../src/lib/storage.js');
+    const order: string[] = [];
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const holding = new Promise<void>((r) => { started = r; });
+
+    // Act
+    const multi = withFileLocks(['/x/b', '/x/a'], async () => { order.push('multi start'); started(); await held; order.push('multi end'); });
+    await holding;
+    const single = withFileLock('/x/b', async () => { order.push('single'); });
+    release();
+    await Promise.all([multi, single]);
+
+    // Assert
+    expect(order).toEqual(['multi start', 'multi end', 'single']);
+  });
+
   it('should serve HTML documents only through the sandboxed frame', async () => {
     await api(ana, '/push?scope=me', { file: 'demo.html', content: '<h1>Demo</h1><script>1</script>' });
 
