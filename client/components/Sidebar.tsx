@@ -268,6 +268,9 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   return (
     <aside data-noprint className={`${s.sidebar} ${s.sidebarProject}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
       <div className={s.sidebarHeader}>
+        <button className={s.sidebarBack} onClick={() => { navigate(urlPrefix); onMobileClose?.(); }}>
+          <span aria-hidden="true">←</span> Documentos
+        </button>
         <div className={s.sidebarLogo}>
           <span className={s.sidebarLogoText}>{folder}</span>
         </div>
@@ -285,18 +288,14 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         )}
       </div>
 
-      <div className={s.sidebarFooter}>
-        {canWrite && editUrl && (
+      {canWrite && editUrl && (
+        <div className={s.sidebarFooter}>
           <button className={s.sidebarItem} onClick={() => { navigate(editUrl); onMobileClose?.(); }}>
             <span aria-hidden="true">✎</span>
             <span>Editar</span>
           </button>
-        )}
-        <button className={s.sidebarItem} onClick={() => { navigate(urlPrefix); onMobileClose?.(); }}>
-          <span aria-hidden="true">←</span>
-          <span>Volver a documentos</span>
-        </button>
-      </div>
+        </div>
+      )}
     </aside>
   );
 }

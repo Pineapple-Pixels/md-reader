@@ -192,6 +192,12 @@ function buildBreadcrumbs(pathname: string, urlPrefix: string): Crumb[] {
 
   crumbs.push({ label: 'docs', href: urlPrefix });
 
+  const projectMatch = relative.match(/^\/project\/([^/]+)/);
+  if (projectMatch) {
+    crumbs.push({ label: projectMatch[1]! });
+    return crumbs;
+  }
+
   const docMatch = relative.match(/^\/(doc|edit|source)\/(.+)/);
   if (!docMatch) return crumbs;
 
@@ -199,7 +205,7 @@ function buildBreadcrumbs(pathname: string, urlPrefix: string): Crumb[] {
   const parts = filePath.split('/');
 
   if (parts.length > 1) {
-    crumbs.push({ label: parts[0] });
+    crumbs.push({ label: parts[0], href: `${urlPrefix}/project/${encodeURIComponent(parts[0])}` });
   }
 
   const fileName = stripDocExt(parts[parts.length - 1]);
