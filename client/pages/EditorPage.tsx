@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar } from '../components/Toolbar';
+import { ArrowLeftIcon, SaveIcon } from '../components/Icons';
 
 type Draft = { content: string; baseHash: string; savedAt: string };
 type Conflict = 'changed' | 'deleted';
@@ -181,8 +182,8 @@ function Editor({ file }: { file: string }) {
     <div className="container">
       <Toolbar
         actions={[
-          { label: 'Volver al documento', onClick: leave },
-          { label: saving ? 'Guardando...' : 'Guardar', onClick: () => void save(), primary: true },
+          { label: 'Volver al documento', onClick: leave, icon: <ArrowLeftIcon /> },
+          { label: saving ? 'Guardando...' : 'Guardar', onClick: () => void save(), primary: true, icon: <SaveIcon size={16} /> },
         ]}
       >
         <span role="status" className="mono-label" style={{ color: statusColor, alignSelf: 'center', padding: '0 14px' }}>{status}</span>

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
+import { ArchiveIcon, DownloadIcon, TrashIcon } from '../components/Icons';
 import type { FileEntry } from '@shared/types';
 import { docKind, isDocFile, kindSummary, stripDocExt } from '@shared/doc-types';
 import s from './IndexPage.module.css';
@@ -213,14 +214,14 @@ export function IndexPage() {
     if (!canWrite) return null;
     return (
       <span className={s.indexFileActions}>
-        <button className="action-btn download-btn" onClick={(e) => { e.preventDefault(); downloadDoc(name); }}>
-          Descargar
+        <button className="icon-btn" aria-label="Descargar" data-tip="Descargar" onClick={(e) => { e.preventDefault(); downloadDoc(name); }}>
+          <DownloadIcon size={17} />
         </button>
-        <button className="action-btn" onClick={(e) => { e.preventDefault(); archiveEntry(name); }}>
-          Archivar
+        <button className="icon-btn" aria-label="Archivar" data-tip="Archivar" onClick={(e) => { e.preventDefault(); archiveEntry(name); }}>
+          <ArchiveIcon size={17} />
         </button>
-        <button className="action-btn delete-btn" onClick={(e) => { e.preventDefault(); deleteDoc(name); }}>
-          Eliminar
+        <button className="icon-btn danger" aria-label="Eliminar" data-tip="Eliminar" onClick={(e) => { e.preventDefault(); deleteDoc(name); }}>
+          <TrashIcon size={17} />
         </button>
       </span>
     );
@@ -286,7 +287,7 @@ export function IndexPage() {
                       <span className={s.indexMeta}>{kindSummary(docs.map((d) => d.name))} · {latestDate}</span>
                       {canWrite ? (
                         <span className={s.indexFileActions}>
-                          <button className="action-btn" onClick={() => archiveEntry(folder)}>Archivar</button>
+                          <button className="icon-btn" aria-label="Archivar" data-tip="Archivar" onClick={() => archiveEntry(folder)}><ArchiveIcon size={17} /></button>
                         </span>
                       ) : <span />}
                     </li>

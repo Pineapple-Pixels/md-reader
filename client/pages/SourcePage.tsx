@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore } from '../hooks/useNavStore';
 import { Toolbar, type ToolbarAction } from '../components/Toolbar';
+import { ArrowLeftIcon, EyeIcon, PencilIcon } from '../components/Icons';
 import type { Comment } from '@shared/types';
 
 export function SourcePage() {
@@ -96,11 +97,11 @@ export function SourcePage() {
   const docUrl = `${urlPrefix}/doc/${file}`;
 
   const actions: ToolbarAction[] = [
-    { label: 'Volver', href: urlPrefix },
-    { label: 'Ver renderizado', href: docUrl },
+    { label: 'Volver', href: urlPrefix, icon: <ArrowLeftIcon /> },
+    { label: 'Ver renderizado', href: docUrl, icon: <EyeIcon /> },
   ];
   if (canWrite) {
-    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}` });
+    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true, icon: <PencilIcon size={16} /> });
   }
 
   return (
