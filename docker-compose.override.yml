@@ -1,0 +1,5 @@
+# Local dev only: `docker compose up` merges this file automatically; Coolify deploys docker-compose.yml alone.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"

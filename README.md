@@ -154,8 +154,13 @@ docker compose up -d
 ```
 
 Variables de entorno requeridas en produccion:
-- `DATABASE_URL` — connection string PostgreSQL
+- `POSTGRES_PASSWORD` — password del Postgres del compose (sin ella queda `mdreader`, solo apta para dev)
 - `JWT_SECRET` — secreto seguro (generar con `openssl rand -base64 64`)
 - `STORAGE_DIR` — path al volumen de storage
 
-Las migraciones se corren automaticamente al arrancar.
+Las migraciones se corren automaticamente al arrancar. El Postgres no publica puertos en produccion;
+`docker-compose.override.yml` lo expone solo en `127.0.0.1:5432` para desarrollo local.
+
+**Auto-deploy:** cada push a `main` corre el CI y, si pasa, el job `deploy` llama al deploy webhook de Coolify.
+Necesita dos secrets del repo en GitHub: `COOLIFY_WEBHOOK` (Coolify → app → Webhooks → Deploy Webhook) y
+`COOLIFY_TOKEN` (Coolify → Keys & Tokens → API token con permiso de deploy). Sin ellos el job avisa y no deploya.
