@@ -6,6 +6,8 @@ interface NavState {
   favorites: string[];
   openTab: (file: string) => void;
   closeTab: (file: string) => void;
+  /** Drops a doc, or every doc under a folder, from tabs, recents and favorites. */
+  forget: (path: string) => void;
   toggleFavorite: (file: string) => void;
   isFavorite: (file: string) => boolean;
   recents: () => string[];
@@ -35,6 +37,11 @@ export const useNavStore = create<NavState>()(
       },
       closeTab: (file: string) => {
         set({ openTabs: get().openTabs.filter(t => t !== file) });
+      },
+      forget: (path: string) => {
+        const gone = (f: string) => f === path || f.startsWith(`${path}/`);
+        set({ openTabs: get().openTabs.filter((t) => !gone(t)) });
+        useFavoritesStore.setState({ favorites: useFavoritesStore.getState().favorites.filter((f) => !gone(f)) });
       },
       toggleFavorite: (file: string) => {
         useFavoritesStore.getState().toggle(file);

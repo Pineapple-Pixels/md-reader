@@ -9,6 +9,7 @@ import { EditorPage } from './pages/EditorPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SourcePage } from './pages/SourcePage';
 import { ProjectPage } from './pages/ProjectPage';
+import { ArchivedPage } from './pages/ArchivedPage';
 import { AdminPage } from './pages/AdminPage';
 import { ProfilePage } from './pages/ProfilePage';
 
@@ -31,6 +32,7 @@ export function App() {
 
           <Route path="/me" element={<ScopeLayout kind="me" />}>
             <Route index element={<IndexPage />} />
+            <Route path="archived" element={<ArchivedPage />} />
             <Route path="doc/*" element={<DocPage />} />
             <Route path="edit/*" element={<EditorPage />} />
             <Route path="history/*" element={<HistoryPage />} />
@@ -40,6 +42,7 @@ export function App() {
 
           <Route path="/t/:slug" element={<ScopeLayout kind="team" />}>
             <Route index element={<IndexPage />} />
+            <Route path="archived" element={<ArchivedPage />} />
             <Route path="doc/*" element={<DocPage />} />
             <Route path="edit/*" element={<EditorPage />} />
             <Route path="history/*" element={<HistoryPage />} />

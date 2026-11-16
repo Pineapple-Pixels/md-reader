@@ -322,3 +322,34 @@ test('should hide the sidebar on desktop and keep it hidden after a reload', asy
   await page.getByRole('button', { name: 'Mostrar u ocultar menu lateral' }).click();
   await expect(page.locator('aside')).toBeVisible();
 });
+
+// ---------- Archive ----------
+
+test('should archive a document and bring it back from Archivados', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+  const file = 'para-archivar.md';
+  expect((await page.request.post('/api/push?scope=me', { data: { file, content: '# Para archivar\n' } })).ok()).toBe(true);
+  try {
+    await openDoc(page, `/me/doc/${file}`);
+
+    await page.getByRole('button', { name: 'Archivar', exact: true }).click();
+
+    await expect(page).toHaveURL(/\/me$/);
+    await expect(page.locator('aside').getByText('para-archivar', { exact: true })).toHaveCount(0);
+    await page.getByRole('link', { name: /Archivados \(1\)/ }).click();
+    await expect(page.getByRole('heading', { name: 'Archivados' })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator('.toast')).toHaveCount(0);
+    // Masked: the sidebar order depends on refetch timing and the date is today's.
+    const mask = [page.locator('aside'), page.locator('[class*="index-meta"]')];
+    await expect(page).toHaveScreenshot('archivados.png', { mask });
+
+    await page.getByRole('button', { name: 'Restaurar', exact: true }).click();
+
+    await expect(page.getByText('No hay nada archivado.')).toBeVisible();
+    await expect(page.locator('aside').getByText('para-archivar', { exact: true }).first()).toBeVisible();
+  } finally {
+    await page.request.delete('/api/delete?scope=me', { data: { file } });
+  }
+});

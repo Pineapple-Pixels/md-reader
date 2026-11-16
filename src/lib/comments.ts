@@ -82,3 +82,11 @@ export async function deleteAllComments(scopeId: string, file: string): Promise<
     DELETE FROM comments WHERE scope_id = ${scopeId} AND file = ${file}
   `;
 }
+
+/** Re-keys the comments of a doc, or of every doc under a folder, from path `from` to `to`. */
+export async function moveComments(scopeId: string, from: string, to: string): Promise<void> {
+  await sql`
+    UPDATE comments SET file = ${to} || substr(file, ${from.length + 1})
+    WHERE scope_id = ${scopeId} AND (file = ${from} OR left(file, ${from.length + 1}) = ${`${from}/`})
+  `;
+}

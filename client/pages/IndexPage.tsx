@@ -4,13 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
+import { useNavStore } from '../hooks/useNavStore';
 import type { FileEntry } from '@shared/types';
 import { docKind, isDocFile, kindSummary, stripDocExt } from '@shared/doc-types';
 import s from './IndexPage.module.css';
 
-const pad = (n: number) => String(n).padStart(2, '0');
+export const pad = (n: number) => String(n).padStart(2, '0');
 
-function formatDate(dateStr: string) {
+export function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('es-AR', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
@@ -25,6 +26,7 @@ export function IndexPage() {
   const scopedFetch = useScopedFetch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const forget = useNavStore((s) => s.forget);
   const [newFile, setNewFile] = useState('');
   const [uploadProgress, setUploadProgress] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -39,9 +41,16 @@ export function IndexPage() {
     queryFn: () => scopedFetch<FileEntry[]>('/docs'),
   });
 
+  const { data: archived = [] } = useQuery({
+    queryKey: ['archived', scopeId],
+    queryFn: () => scopedFetch<FileEntry[]>('/archived'),
+    enabled: canWrite,
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['docs', scopeId] });
     queryClient.invalidateQueries({ queryKey: ['search-index', scopeId] });
+    queryClient.invalidateQueries({ queryKey: ['archived', scopeId] });
   };
 
   async function handleCreate(e: React.FormEvent) {
@@ -172,6 +181,17 @@ export function IndexPage() {
     }
   }
 
+  async function archiveEntry(name: string) {
+    try {
+      await scopedFetch('/archive', { method: 'POST', body: JSON.stringify({ file: name }) });
+      forget(name);
+      toast(`"${name}" archivado. Lo podes restaurar desde Archivados`, 'success');
+      refresh();
+    } catch (err) {
+      toast(err instanceof ApiError && err.status === 409 ? `Ya hay un archivado llamado "${name}"` : 'Error al archivar', 'error');
+    }
+  }
+
   const rootFiles = files.filter((f) => !f.name.includes('/'));
   const folders: Record<string, FileEntry[]> = {};
   for (const f of files) {
@@ -195,6 +215,9 @@ export function IndexPage() {
       <span className={s.indexFileActions}>
         <button className="action-btn download-btn" onClick={(e) => { e.preventDefault(); downloadDoc(name); }}>
           Descargar
+        </button>
+        <button className="action-btn" onClick={(e) => { e.preventDefault(); archiveEntry(name); }}>
+          Archivar
         </button>
         <button className="action-btn delete-btn" onClick={(e) => { e.preventDefault(); deleteDoc(name); }}>
           Eliminar
@@ -261,7 +284,11 @@ export function IndexPage() {
                       <span className={s.indexNum}>{pad(i + 1)}</span>
                       <Link to={`${urlPrefix}/project/${folder}`} className={s.indexName}>{folder}/</Link>
                       <span className={s.indexMeta}>{kindSummary(docs.map((d) => d.name))} · {latestDate}</span>
-                      <span />
+                      {canWrite ? (
+                        <span className={s.indexFileActions}>
+                          <button className="action-btn" onClick={() => archiveEntry(folder)}>Archivar</button>
+                        </span>
+                      ) : <span />}
                     </li>
                   );
                 })}
@@ -293,6 +320,12 @@ export function IndexPage() {
         </>
       ) : (
         <p className="empty-msg">No hay documentos en este scope.</p>
+      )}
+
+      {canWrite && archived.length > 0 && (
+        <Link to={`${urlPrefix}/archived`} className={s.indexArchivedLink}>
+          Archivados ({archived.length}) <span aria-hidden="true">→</span>
+        </Link>
       )}
     </div>
   );

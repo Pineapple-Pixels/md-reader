@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir, stat, rename, rm } from 'fs/promises';
+import { readdir, readFile, writeFile, mkdir, stat, rename, rm, rmdir } from 'fs/promises';
 import { createHash, randomBytes } from 'crypto';
 import { join, basename, dirname, extname, relative, resolve, sep } from 'path';
 import { existsSync } from 'fs';
@@ -263,5 +263,81 @@ export async function writeDocAtomic(filePath: string, content: string): Promise
   } catch (err) {
     await rm(tmp, { force: true });
     throw err;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Archive
+// -----------------------------------------------------------------------------
+// Archived docs keep their relative path under `<scope>/.archive/`. getFiles skips dot folders,
+// so they leave every list and the search index. Their comments, origin and versions are re-keyed
+// to `.archive/<path>` too, so a new live doc with the same name never shares them.
+
+export const ARCHIVE_PREFIX = '.archive';
+
+export function archiveDir(basePath: string): string {
+  return join(basePath, ARCHIVE_PREFIX);
+}
+
+export type MoveResult = 'moved' | 'not-found' | 'conflict';
+
+/**
+ * Moves a doc or folder from `from` to `to` without ever overwriting, then drops folders it left
+ * empty up to `stopAt`. `afterMove` runs under the same locks, for whatever is keyed by the path.
+ */
+export async function moveEntry(from: string, to: string, stopAt: string, afterMove: () => Promise<void>): Promise<MoveResult> {
+  return withFileLocks([from, to], async () => {
+    if (!(await pathExists(from))) return 'not-found';
+    if (await pathExists(to)) return 'conflict';
+    await ensureDir(dirname(to));
+    await rename(from, to);
+    await pruneEmptyDirs(dirname(from), stopAt);
+    await afterMove();
+    return 'moved';
+  });
+}
+
+/** Moves the history of a doc, or of every doc under a folder, from relative path `from` to `to`, merging into existing history. */
+export async function moveVersions(basePath: string, from: string, to: string): Promise<void> {
+  const root = join(basePath, '.versions');
+  if (!existsSync(root)) return;
+  for (const name of await readdir(root)) {
+    let rel: string;
+    try { rel = decodeURIComponent(name); } catch { continue; }
+    if (rel !== from && !rel.startsWith(`${from}/`)) continue;
+    const src = join(root, name);
+    const dest = join(root, encodeURIComponent(to + rel.slice(from.length)));
+    if (!(await pathExists(dest))) {
+      await rename(src, dest);
+      continue;
+    }
+    // Version ids are timestamps, so two histories merge without clashing.
+    for (const id of await readdir(src)) {
+      if (!(await pathExists(join(dest, id)))) await rename(join(src, id), join(dest, id));
+    }
+    // A clashing id stays where it was rather than being lost.
+    await rmdir(src).catch(() => undefined);
+  }
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+async function pruneEmptyDirs(dir: string, stopAt: string): Promise<void> {
+  for (let d = dir; d !== stopAt && d.startsWith(stopAt + sep); d = dirname(d)) {
+    // Best effort: a concurrent write into the folder just means it stays.
+    try {
+      if ((await readdir(d)).length > 0) return;
+      await rmdir(d);
+    } catch {
+      return;
+    }
   }
 }
