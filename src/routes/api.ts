@@ -49,6 +49,8 @@ const COMMENT_AUTHOR_MAX = 100;
 const FileContentBody = z.object({
   file: z.string().min(1),
   content: z.string(),
+  /** Refuse (409) instead of overwriting an existing doc. */
+  createOnly: z.boolean().optional(),
 });
 
 const FileBody = z.object({
@@ -260,15 +262,18 @@ router.post('/push', ah(async (req, res) => {
   if (!assertWritable(scope, res)) return;
   const parsed = FileContentBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
-  const { file, content } = parsed.data;
+  const { file, content, createOnly } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
-  await withFileLock(filePath, async () => {
+  const written = await withFileLock(filePath, async () => {
     const old = await readOrNull(filePath);
+    if (old !== null && createOnly) return false;
     if (old !== null) await saveVersion(filePath, old, scope.basePath);
     await writeDocAtomic(filePath, content);
+    return true;
   });
+  if (!written) return res.status(409).json({ error: 'Ya existe un documento con ese nombre', conflict: true });
   invalidateSearchIndex(scope.id);
   res.json({ ok: true });
 }));

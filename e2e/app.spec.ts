@@ -181,8 +181,10 @@ test('should offer the unsaved draft back after the tab is reloaded', async ({ p
   expect(dialogs).toEqual(['beforeunload']);
   await expect(page.getByRole('alert')).toContainText('borrador sin guardar');
   await expect(page.getByLabel('Contenido del documento')).toHaveValue('# Apunte\n\nTexto original.\n');
+  await expect(page.getByLabel('Contenido del documento')).not.toBeEditable();
   await page.getByRole('button', { name: 'Recuperar borrador' }).click();
   await expect(page.getByLabel('Contenido del documento')).toHaveValue('# Apunte\n\nBorrador sin guardar.\n');
+  await expect(page.getByLabel('Contenido del documento')).toBeEditable();
   expect(await serverContent(page, 'borrador.md')).toBe('# Apunte\n\nTexto original.\n');
 });
 

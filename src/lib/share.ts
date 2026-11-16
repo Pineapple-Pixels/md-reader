@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises';
 import { sql } from './db.js';
 import { isDocFile } from '../../shared/doc-types.js';
 import type { DocOrigin } from '../../shared/types.js';
-import { getFiles, resolveDoc, saveVersion, withFileLock, writeDocAtomic, type ResolvedScope } from './storage.js';
+import { getFiles, resolveDoc, saveVersion, withFileLocks, writeDocAtomic, type ResolvedScope } from './storage.js';
 import { statOrNull, isEnoent } from './route-helpers.js';
 
 /** Relative doc or folder path without empty, traversal or hidden segments. */
@@ -37,19 +37,23 @@ export async function copyDocs(
   const targets = files.map((f) => ({ rel: f, from: resolveDoc(f, src.basePath)!, to: resolveDoc(f, dest.basePath)! }));
   if (targets.some((t) => !t.from || !t.to)) return { status: 'not-found' };
 
-  if (!opts.overwrite) {
-    const existing = (await Promise.all(targets.map(async (t) => ((await statOrNull(t.to)) ? t.rel : null))))
-      .filter((f): f is string => f !== null);
-    if (existing.length > 0) return { status: 'conflict', files: existing };
-  }
-
-  for (const t of targets) {
-    const content = await readFile(t.from, 'utf-8');
-    await withFileLock(t.to, async () => {
+  const conflicts = await withFileLocks(targets.map((t) => t.to), async () => {
+    if (!opts.overwrite) {
+      const existing = (await Promise.all(targets.map(async (t) => ((await statOrNull(t.to)) ? t.rel : null))))
+        .filter((f): f is string => f !== null);
+      if (existing.length > 0) return existing;
+    }
+    for (const t of targets) {
+      const content = await readFile(t.from, 'utf-8');
       const old = await readFile(t.to, 'utf-8').catch((err: unknown) => { if (isEnoent(err)) return null; throw err; });
       if (old !== null) await saveVersion(t.to, old, dest.basePath);
       await writeDocAtomic(t.to, content);
-    });
+    }
+    return [];
+  });
+  if (conflicts.length > 0) return { status: 'conflict', files: conflicts };
+
+  for (const t of targets) {
     await sql`
       INSERT INTO doc_origins (scope_id, path, from_label, from_path, by_user_id)
       VALUES (${dest.id}, ${t.rel}, ${opts.fromLabel}, ${t.rel}, ${opts.byUserId})

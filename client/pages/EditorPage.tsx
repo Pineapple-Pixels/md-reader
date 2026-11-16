@@ -219,6 +219,8 @@ function Editor({ file }: { file: string }) {
           onChange={(e) => { setContent(e.target.value); setJustSaved(false); }}
           onKeyDown={handleKeyDown}
           disabled={content === null}
+          // Typing before choosing would be lost: the draft is not written while the offer is open.
+          readOnly={pendingDraft !== null}
         />
       </div>
     </div>
