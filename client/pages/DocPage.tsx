@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/useScope';
 import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
 import { HtmlFrame } from '../components/HtmlFrame';
+import { ArchiveIcon, ArrowLeftIcon, ClockIcon, CodeIcon, DownloadIcon, PencilIcon, ShareIcon, TrashIcon } from '../components/Icons';
 import { isMarkdownKind } from '@shared/doc-types';
 import { ApiError } from '@shared/api';
 import { useNavStore } from '../hooks/useNavStore';
@@ -273,13 +274,13 @@ export function DocPage() {
   const fileParam = `?file=${encodeURIComponent(file)}`;
   const markdownLike = isMarkdownKind(file);
   const actions: ToolbarAction[] = [
-    { label: 'Volver', href: urlPrefix },
-    { label: commentLabel, href: sourceUrl },
+    { label: 'Volver', href: urlPrefix, icon: <ArrowLeftIcon /> },
+    { label: commentLabel, href: sourceUrl, icon: <CodeIcon />, badge: data?.commentCount },
   ];
 
   if (canWrite) {
-    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true });
-    actions.push({ label: 'Historial', href: `${urlPrefix}/history/${file}` });
+    actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true, icon: <PencilIcon size={16} /> });
+    actions.push({ label: 'Historial', href: `${urlPrefix}/history/${file}`, icon: <ClockIcon /> });
   }
   const exportItems: ToolbarItem[] = [];
   if (markdownLike) {
@@ -289,7 +290,7 @@ export function DocPage() {
   if (canWrite) {
     exportItems.push({ label: 'Archivo original', onClick: () => (window.location.href = scopedUrl(`/download${fileParam}`)) });
   }
-  actions.push({ label: 'Exportar', menu: exportItems });
+  actions.push({ label: 'Exportar', menu: exportItems, icon: <DownloadIcon /> });
   const shareItems: ToolbarItem[] = [];
   if (isAuthenticated && copyTargets.length > 0) {
     shareItems.push({ label: 'Copiar a equipo', onClick: () => setCopying(true) });
@@ -297,13 +298,13 @@ export function DocPage() {
   if (canWrite && role === 'admin' && scope.kind !== 'public') {
     shareItems.push({ label: 'Publicar en Publicos', onClick: () => handlePublish(false) });
   }
-  actions.push({ label: 'Compartir', menu: shareItems });
+  actions.push({ label: 'Compartir', menu: shareItems, icon: <ShareIcon /> });
   // The index of the public scope has no Archivados list, so archiving stays in me/team.
   if (canWrite && scope.kind !== 'public') {
-    actions.push({ label: 'Archivar', onClick: handleArchive });
+    actions.push({ label: 'Archivar', onClick: handleArchive, icon: <ArchiveIcon /> });
   }
   if (canWrite) {
-    actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'action-btn delete-btn' });
+    actions.push({ label: 'Eliminar', onClick: handleDelete, className: 'delete-btn', icon: <TrashIcon /> });
   }
   const origin = data?.origin;
 

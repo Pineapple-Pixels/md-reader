@@ -128,3 +128,55 @@ export function MoonIcon({ size = 16, className, ...props }: IconProps) {
     </svg>
   );
 }
+
+function Stroke({ size = 18, className, children, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className} {...props}>
+      {children}
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M19 12H5M11 6l-6 6 6 6" /></Stroke>;
+}
+
+export function CodeIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" /></Stroke>;
+}
+
+export function PencilIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></Stroke>;
+}
+
+export function ClockIcon(props: IconProps) {
+  return <Stroke {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Stroke>;
+}
+
+export function DownloadIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></Stroke>;
+}
+
+export function ShareIcon(props: IconProps) {
+  return <Stroke {...props}><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6" /></Stroke>;
+}
+
+export function ArchiveIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M3 5h18v4H3zM5 9v10h14V9M10 13h4" /></Stroke>;
+}
+
+export function TrashIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></Stroke>;
+}
+
+export function RestoreIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5" /></Stroke>;
+}
+
+export function EyeIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></Stroke>;
+}
+
+export function SaveIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" /></Stroke>;
+}

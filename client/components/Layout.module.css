@@ -2,13 +2,14 @@
 .app-shell { display: flex; flex-direction: column; height: 100vh; }
 .app-body { display: flex; flex: 1; overflow: hidden; }
 .app-main { flex: 1; overflow-y: auto; background: var(--bg); }
+.app-main > * { zoom: var(--z); }
 
 @media (min-width: 769px) {
   .sidebar-hidden > aside { display: none; }
 }
 /* Offsetting the sidebar's width centres the reading column on the window, not on the leftover space. */
 @media (min-width: 1400px) {
-  .app-body:not(.sidebar-hidden) .app-main { padding-right: 268px; }
+  .app-body:not(.sidebar-hidden) .app-main { padding-right: calc(268px * var(--z)); }
 }
 
 /* === Mobile sidebar backdrop === */

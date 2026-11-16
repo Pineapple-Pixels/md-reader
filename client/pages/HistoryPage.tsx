@@ -7,6 +7,7 @@ import type { DocKind } from '@shared/doc-types';
 import { useScope, useScopedFetch, useScopeOrg } from '../hooks/useScope';
 import { useToast } from '../hooks/useToast';
 import { Toolbar } from '../components/Toolbar';
+import { ArrowLeftIcon } from '../components/Icons';
 import { DocFrame } from '../components/DocFrame';
 
 type VersionDetail = { content: string; kind: DocKind; html: string };
@@ -47,7 +48,7 @@ export function HistoryPage() {
 
   return (
     <div className="container">
-      <Toolbar actions={[{ label: 'Volver al documento', href: `${urlPrefix}/doc/${file}` }]} />
+      <Toolbar actions={[{ label: 'Volver al documento', href: `${urlPrefix}/doc/${file}`, icon: <ArrowLeftIcon /> }]} />
       <h1 style={{ fontSize: '1.4em', marginBottom: 12 }}>Historial de {file.split('/').pop()}</h1>
       {isLoading ? (
         <p style={{ color: 'var(--text-muted)' }}>Cargando...</p>

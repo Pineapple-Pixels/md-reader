@@ -353,3 +353,48 @@ test('should archive a document and bring it back from Archivados', async ({ pag
     await page.request.delete('/api/delete?scope=me', { data: { file } });
   }
 });
+
+// ---------- Icon actions ----------
+
+test('should name each icon action in a tooltip on hover and on keyboard focus', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+  await openDoc(page, '/me/doc/programa.md');
+  const history = page.getByRole('link', { name: 'Historial' });
+  const tipOpacity = () => history.evaluate((el) => getComputedStyle(el, '::after').opacity);
+  expect(await history.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('"Historial"');
+
+  await history.hover();
+
+  await expect.poll(tipOpacity).toBe('1');
+  await page.mouse.move(0, 0);
+  await expect.poll(tipOpacity).toBe('0');
+  await history.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect.poll(tipOpacity).toBe('1');
+});
+
+// ---------- Wide screens ----------
+
+test('should scale the reading layout up on a 2560px screen and keep it centered', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1300 });
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+
+  await openDoc(page, '/me/doc/programa.md');
+
+  const box = (await page.locator('.container').boundingBox())!;
+  expect(box.width).toBeGreaterThan(1400);
+  expect(Math.abs(box.x + box.width / 2 - 1280)).toBeLessThanOrEqual(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(2560);
+  // The sidebar order depends on what earlier tests saved, which is not what this capture is about.
+  await expect(page).toHaveScreenshot('doc-2560.png', { mask: [page.locator('aside')] });
+
+  // Viewport heights inside the scaled layout must still fit the window.
+  for (const [path, selector] of [['/me/edit/editable.md', '.editor-wrap'], ['/me/doc/simulador.html', '.html-frame']]) {
+    await page.goto(path);
+    const bottom = await page.locator(selector).evaluate((el) => el.getBoundingClientRect().bottom);
+    expect(bottom).toBeLessThanOrEqual(1300);
+  }
+});

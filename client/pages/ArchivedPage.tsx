@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { FileEntry } from '@shared/types';
 import { docKind, kindSummary, stripDocExt } from '@shared/doc-types';
 import { useToast } from '../hooks/useToast';
+import { RestoreIcon } from '../components/Icons';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { formatDate, pad } from './IndexPage';
 import s from './IndexPage.module.css';
@@ -71,7 +72,7 @@ export function ArchivedPage() {
                     <span className={s.indexName}>{folder}/</span>
                     <span className={s.indexMeta}>{kindSummary(docs.map((d) => d.name))}</span>
                     <span className={s.indexFileActions}>
-                      <button className="action-btn" onClick={() => restore(folder, docs.map((d) => d.name))}>Restaurar carpeta</button>
+                      <button className="icon-btn" aria-label="Restaurar carpeta" data-tip="Restaurar carpeta" onClick={() => restore(folder, docs.map((d) => d.name))}><RestoreIcon size={17} /></button>
                     </span>
                   </li>
                 ))}
@@ -94,7 +95,7 @@ export function ArchivedPage() {
                       </span>
                       <span className={s.indexMeta}>{formatDate(doc.modified)}</span>
                       <span className={s.indexFileActions}>
-                        <button className="action-btn" onClick={() => restore(doc.name, [doc.name])}>Restaurar</button>
+                        <button className="icon-btn" aria-label="Restaurar" data-tip="Restaurar" onClick={() => restore(doc.name, [doc.name])}><RestoreIcon size={17} /></button>
                       </span>
                     </li>
                   );
