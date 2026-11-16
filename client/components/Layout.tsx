@@ -5,7 +5,7 @@ import { ScopeProvider } from '../hooks/useScope';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../hooks/logout';
 import { SearchModal } from './SearchModal';
-import { Topbar } from './Topbar';
+import { Breadcrumbs, Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import s from './Layout.module.css';
 
@@ -22,7 +22,17 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
   const { slug, org } = useParams<{ slug?: string; org?: string }>();
   const { isAuthenticated, isLoading, isFetching, teams, org: currentOrg, displayName, user } = useAuth();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const openMobileSidebar = useCallback(() => setMobileSidebarOpen(true), []);
+  const [sidebarHidden, setSidebarHidden] = useState(() => readSidebarHidden());
+  const toggleSidebar = useCallback(() => {
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      setMobileSidebarOpen(true);
+      return;
+    }
+    setSidebarHidden((hidden) => {
+      try { localStorage.setItem(SIDEBAR_HIDDEN_KEY, hidden ? '0' : '1'); } catch { /* storage blocked: keep it for this visit */ }
+      return !hidden;
+    });
+  }, []);
   const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 
   // /me y /t/:slug requieren auth. /pub es accesible sin auth.
@@ -54,13 +64,14 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
   return (
     <ScopeProvider scope={scope}>
       <div className={s.appShell}>
-        <Topbar onHamburgerClick={openMobileSidebar} />
-        <div className={s.appBody}>
+        <Topbar onHamburgerClick={toggleSidebar} />
+        <div className={`${s.appBody}${sidebarHidden ? ` ${s.sidebarHidden}` : ''}`}>
           <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={closeMobileSidebar} />
           {mobileSidebarOpen && (
             <div className={`${s.sidebarBackdrop} ${s.visible}`} onClick={closeMobileSidebar} />
           )}
           <main className={s.appMain}>
+            <Breadcrumbs />
             <Outlet />
           </main>
         </div>
@@ -68,6 +79,12 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
       {isAuthenticated && <SearchModal />}
     </ScopeProvider>
   );
+}
+
+const SIDEBAR_HIDDEN_KEY = 'sidebar-hidden';
+
+function readSidebarHidden(): boolean {
+  try { return localStorage.getItem(SIDEBAR_HIDDEN_KEY) === '1'; } catch { return false; }
 }
 
 /** Signed in, but no organization has invited this account yet. */

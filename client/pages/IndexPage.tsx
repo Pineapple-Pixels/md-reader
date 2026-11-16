@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import type { FileEntry } from '@shared/types';
-import { docKind, isDocFile, stripDocExt } from '@shared/doc-types';
+import { docKind, isDocFile, kindSummary, stripDocExt } from '@shared/doc-types';
 import s from './IndexPage.module.css';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -260,7 +260,7 @@ export function IndexPage() {
                     <li key={folder} className={s.indexRow}>
                       <span className={s.indexNum}>{pad(i + 1)}</span>
                       <Link to={`${urlPrefix}/project/${folder}`} className={s.indexName}>{folder}/</Link>
-                      <span className={s.indexMeta}>{docs.length} {docs.length === 1 ? 'doc' : 'docs'} · {latestDate}</span>
+                      <span className={s.indexMeta}>{kindSummary(docs.map((d) => d.name))} · {latestDate}</span>
                       <span />
                     </li>
                   );
@@ -280,7 +280,7 @@ export function IndexPage() {
                       <span className={s.indexNum}>{pad(i + 1)}</span>
                       <span className={s.indexName}>
                         <Link to={`${urlPrefix}/doc/${doc.name}`} className={s.indexName}>{stripDocExt(doc.name)}</Link>
-                        {kind && kind !== 'md' && <span className={s.indexKind}>{kind.toUpperCase()}</span>}
+                        {kind && <span className={s.indexKind}>{kind.toUpperCase()}</span>}
                       </span>
                       <span className={s.indexMeta}>{formatDate(doc.modified)}</span>
                       {renderActions(doc.name) ?? <span />}
