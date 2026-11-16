@@ -161,6 +161,5 @@ Variables de entorno requeridas en produccion:
 Las migraciones se corren automaticamente al arrancar. El Postgres no publica puertos en produccion;
 `docker-compose.override.yml` lo expone solo en `127.0.0.1:5432` para desarrollo local.
 
-**Auto-deploy:** cada push a `main` corre el CI y, si pasa, el job `deploy` llama al deploy webhook de Coolify.
-Necesita dos secrets del repo en GitHub: `COOLIFY_WEBHOOK` (Coolify → app → Webhooks → Deploy Webhook) y
-`COOLIFY_TOKEN` (Coolify → Keys & Tokens → API token con permiso de deploy). Sin ellos el job avisa y no deploya.
+**Auto-deploy:** cada push a `main` dispara un webhook de GitHub hacia Coolify (app → Webhooks → Manual Git
+webhooks → GitHub), que deploya solo. El webhook lleva el mismo secret que muestra Coolify. No espera al CI.
