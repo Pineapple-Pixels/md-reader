@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { THEME_COLOR_KEYS, type AppTheme, type Base, type ThemeColorKey } from '@shared/design';
+import { THEME_COLOR_KEYS, readableOn, type AppTheme, type Base, type ThemeColorKey } from '@shared/design';
 import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../hooks/useToast';
 
@@ -7,8 +7,8 @@ type Colors = Record<ThemeColorKey, string>;
 
 /** The built-in palettes in app.css, so "Claro"/"Oscuro" can be shown and used as a starting point. */
 const BUILT_IN: Record<Base, Colors> = {
-  light: { bg: '#fafbfd', surface: '#ffffff', text: '#1e2433', muted: '#747b8e', accent: '#9e8245', border: '#dde0e8' },
-  dark: { bg: '#0f1219', surface: '#181c25', text: '#d4d8e4', muted: '#6b7188', accent: '#d4b46a', border: '#282d3a' },
+  light: { bg: '#efebe4', surface: '#f6f3ee', text: '#141413', muted: '#6e6a63', accent: '#141413', border: '#d9d3c9' },
+  dark: { bg: '#121211', surface: '#1a1918', text: '#ece8e1', muted: '#8f8a81', accent: '#ece8e1', border: '#2e2c29' },
 };
 
 const LABELS: Record<ThemeColorKey, string> = {
@@ -17,11 +17,17 @@ const LABELS: Record<ThemeColorKey, string> = {
 
 const colorsOf = (t: AppTheme): Colors => t.tokens.colors ?? BUILT_IN[t.tokens.base];
 
-function Swatch({ colors }: { colors: Colors }) {
+/** What the built-in themes paint as accent: the active org's color (see app.css), ink without one. */
+const BUILT_IN_ACCENT: Record<Base, string> = {
+  light: `var(--org-accent, ${BUILT_IN.light.accent})`,
+  dark: `color-mix(in oklab, var(--org-accent, ${BUILT_IN.dark.accent}) 70%, white)`,
+};
+
+function Swatch({ colors, accent = colors.accent }: { colors: Colors; accent?: string }) {
   return (
     <div className="theme-swatch" style={{ background: colors.bg, borderColor: colors.border }}>
       <span style={{ background: colors.surface, borderColor: colors.border }} />
-      <span style={{ background: colors.accent }} />
+      <span style={{ background: accent }} />
       <span style={{ background: colors.text }} />
     </div>
   );
@@ -79,7 +85,7 @@ export function AppearanceSection() {
       <div className="theme-grid">
         {themes.map((t) => (
           <div key={t.id} className={`theme-card${t.id === active.id ? ' active' : ''}`}>
-            <Swatch colors={colorsOf(t)} />
+            <Swatch colors={colorsOf(t)} accent={t.tokens.colors ? undefined : BUILT_IN_ACCENT[t.tokens.base]} />
             <strong>{t.name}</strong>
             <div className="theme-card-actions">
               {t.id === active.id
@@ -126,7 +132,7 @@ export function AppearanceSection() {
             </div>
             <div className="theme-preview-main">
               <span>Vista previa</span>
-              <button type="button" style={{ background: draft.colors.accent, color: '#fff' }}>Boton</button>
+              <button type="button" style={{ background: draft.colors.accent, color: readableOn(draft.colors.accent) }}>Boton</button>
             </div>
           </div>
           <div className="profile-actions">

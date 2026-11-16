@@ -67,6 +67,14 @@ export const DEFAULT_DESIGN: OrgDesign = {
 
 export type OrgBrand = { name: string; design: OrgDesign; logoUrl: string | null };
 
+/** Text color that stays readable on a solid `#rrggbb` background: dark ink or white, by WCAG luminance. */
+export function readableOn(hex: string, ink = '#141413', light = '#ffffff'): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const lum = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return lum > 0.179 ? ink : light;
+}
+
 // ---------- User app themes ----------
 
 export const THEME_COLOR_KEYS = ['bg', 'surface', 'text', 'muted', 'accent', 'border'] as const;

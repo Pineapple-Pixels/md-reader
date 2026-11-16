@@ -175,7 +175,7 @@ function Editor({ file }: { file: string }) {
   if (error) return <div className="container"><p style={{ color: 'var(--danger)' }}>No se pudo abrir el documento.</p></div>;
 
   const status = saving ? 'Guardando...' : dirty ? 'Cambios sin guardar' : justSaved ? 'Guardado' : '';
-  const statusColor = dirty ? '#d97706' : justSaved ? '#16a34a' : 'var(--text-muted)';
+  const statusColor = dirty ? 'var(--accent)' : justSaved ? 'var(--success)' : 'var(--text-muted)';
 
   return (
     <div className="container">
@@ -185,7 +185,7 @@ function Editor({ file }: { file: string }) {
           { label: saving ? 'Guardando...' : 'Guardar', onClick: () => void save(), primary: true },
         ]}
       >
-        <span role="status" style={{ fontSize: 13, color: statusColor, alignSelf: 'center', marginLeft: 4 }}>{status}</span>
+        <span role="status" className="mono-label" style={{ color: statusColor, alignSelf: 'center', padding: '0 14px' }}>{status}</span>
       </Toolbar>
 
       {pendingDraft && (

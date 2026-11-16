@@ -213,7 +213,8 @@ test('should keep my text when someone else saved first, and let me choose', asy
 
   await expect(page.getByRole('alert')).toContainText('Alguien guardo otra version');
   await expect(page.getByLabel('Contenido del documento')).toHaveValue('# Apunte\n\nMi version.\n');
-  await expect(page).toHaveScreenshot('editor-conflicto.png');
+  // The sidebar order depends on whether the list refetched after the other save: masked so the capture is stable.
+  await expect(page).toHaveScreenshot('editor-conflicto.png', { mask: [page.locator('aside')] });
   await page.getByRole('button', { name: /Guardar igual/ }).click();
   await expect(page.getByRole('status')).toHaveText('Guardado');
   expect(await serverContent(page, 'conflicto.md')).toBe('# Apunte\n\nMi version.\n');
@@ -249,7 +250,8 @@ test('should run HTML documents sandboxed, without the viewer cookie or the API'
   await expect(frame.locator('#cookie')).toHaveText('cookie: oculta');
   await expect(frame.locator('#api')).not.toHaveText('api: esperando');
   await expect(frame.locator('#api')).not.toHaveText('api: abierta');
-  await expect(page).toHaveScreenshot('doc-html.png');
+  // Earlier tests edit docs, so the sidebar order depends on timing: masked so the capture is stable.
+  await expect(page).toHaveScreenshot('doc-html.png', { mask: [page.locator('aside')] });
 });
 
 // ---------- Export ----------

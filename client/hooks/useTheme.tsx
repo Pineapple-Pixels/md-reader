@@ -1,13 +1,26 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
-import { THEME_PRESETS, THEME_COLOR_KEYS, type AppTheme, type ThemeTokens } from '@shared/design';
+import { THEME_PRESETS, THEME_COLOR_KEYS, readableOn, type AppTheme, type ThemeTokens } from '@shared/design';
+import { useOrgBrand } from '../components/DocFrame';
 import { useAuth } from './useAuth';
 
 // App theme = how the app chrome looks for this user. Documents are styled by their org (DocFrame).
 
 const CACHE_TOKENS = 'app-theme';
 const CACHE_ID = 'app-theme-id';
+const CACHE_ORG_ACCENT = 'org-accent';
+
+function applyOrgAccent(accent: string | null): void {
+  const style = document.documentElement.style;
+  if (accent) {
+    style.setProperty('--org-accent', accent);
+    style.setProperty('--org-on-accent', readableOn(accent));
+  } else {
+    style.removeProperty('--org-accent');
+    style.removeProperty('--org-on-accent');
+  }
+}
 
 export function applyTheme(tokens: ThemeTokens): void {
   const root = document.documentElement;
@@ -17,6 +30,8 @@ export function applyTheme(tokens: ThemeTokens): void {
     if (tokens.colors) root.style.setProperty(`--t-${k}`, tokens.colors[k]);
     else root.style.removeProperty(`--t-${k}`);
   }
+  if (tokens.colors) root.style.setProperty('--t-on-accent', readableOn(tokens.colors.accent));
+  else root.style.removeProperty('--t-on-accent');
 }
 
 function readStorage(key: string): string | null {
@@ -25,6 +40,8 @@ function readStorage(key: string): string | null {
 
 /** Applies the last theme before React renders, so a reload does not flash the default palette. */
 export function applyCachedTheme(): void {
+  const accent = readStorage(CACHE_ORG_ACCENT);
+  if (accent && /^#[0-9a-f]{6}$/i.test(accent)) applyOrgAccent(accent);
   const raw = readStorage(CACHE_TOKENS);
   if (!raw) return;
   try { applyTheme(JSON.parse(raw) as ThemeTokens); } catch { /* corrupt cache: keep defaults */ }
@@ -63,15 +80,29 @@ function readCachedTheme(): AppTheme | null {
 /** Forgets this browser's theme so the next person signing in does not inherit it. */
 export function clearCachedTheme(): void {
   try {
-    for (const k of [CACHE_TOKENS, CACHE_ID, 'theme']) localStorage.removeItem(k);
+    for (const k of [CACHE_TOKENS, CACHE_ID, CACHE_ORG_ACCENT, 'theme']) localStorage.removeItem(k);
   } catch { /* storage blocked: nothing cached */ }
 }
 
 const initialId = (): string => readStorage(CACHE_ID) ?? (readStorage('theme') === 'dark' ? 'dark' : 'light');
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, org } = useAuth();
   const queryClient = useQueryClient();
+  const brand = useOrgBrand(org?.slug);
+  const orgAccent = brand.data?.design.colors.link ?? null;
+  // Until auth and the brand load, keep the accent applyCachedTheme painted.
+  const accentSettled = !authLoading && (!org || !brand.isPending);
+
+  // The built-in themes paint their accent with the active org's color; themes with their own colors keep theirs.
+  useEffect(() => {
+    if (!accentSettled) return;
+    applyOrgAccent(orgAccent);
+    try {
+      if (orgAccent) localStorage.setItem(CACHE_ORG_ACCENT, orgAccent);
+      else localStorage.removeItem(CACHE_ORG_ACCENT);
+    } catch { /* storage blocked: accent still applies for this page */ }
+  }, [accentSettled, orgAccent]);
   const { data } = useQuery({
     queryKey: ['themes'],
     queryFn: () => apiFetch<{ active: string; themes: AppTheme[] }>('/me/themes'),

@@ -73,13 +73,14 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
 /** Signed in, but no organization has invited this account yet. */
 function NoOrgScreen({ name }: { name: string | null }) {
   return (
-    <div className="container" style={{ textAlign: 'center', paddingTop: 80 }}>
-      <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Hola{name ? `, ${name}` : ''}</h1>
-      <p style={{ color: 'var(--text-secondary)', maxWidth: 440, margin: '0 auto 24px' }}>
+    <div className="container" style={{ paddingTop: 80 }}>
+      <p className="mono-label" style={{ paddingBottom: 8, borderBottom: '1px solid var(--text)', marginBottom: 20 }}>Sin organizacion</p>
+      <h1 style={{ fontSize: 56, lineHeight: 1, marginBottom: 16 }}>Hola{name ? `, ${name}` : ''}</h1>
+      <p style={{ color: 'var(--text-secondary)', maxWidth: 480, marginBottom: 28, fontSize: 17 }}>
         Tu cuenta ya esta creada, pero todavia no perteneces a ninguna organizacion.
         Pedile a un admin que te invite con tu email; cuando lo haga, volve a entrar.
       </p>
-      <button className="admin-btn" onClick={logout}>Salir</button>
+      <button className="admin-btn primary" onClick={logout}>Salir</button>
     </div>
   );
 }

@@ -70,7 +70,7 @@ export function SearchModal() {
     const parts = text.split(re);
     return parts.map((part, i) =>
       i % 2 === 1
-        ? <mark key={i} style={{ background: 'var(--warning-bg)', color: 'var(--text)', padding: '0 1px', borderRadius: 2 }}>{part}</mark>
+        ? <mark key={i} style={{ background: 'var(--warning-bg)', color: 'var(--text)', padding: '0 1px' }}>{part}</mark>
         : part
     );
   }

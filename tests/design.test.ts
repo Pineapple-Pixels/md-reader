@@ -65,3 +65,16 @@ describe('sniffImage', () => {
     expect(sniffImage(Buffer.alloc(0))).toBeNull();
   });
 });
+
+describe('readableOn', () => {
+  it.each([
+    ['#c0392b', '#ffffff'],
+    ['#1b3a5c', '#ffffff'],
+    ['#9e8245', '#141413'],
+    ['#f5d547', '#141413'],
+    ['#ffffff', '#141413'],
+  ])('should pick %s -> %s for text on that accent', async (bg, expected) => {
+    const { readableOn } = await import('../shared/design.js');
+    expect(readableOn(bg)).toBe(expected);
+  });
+});

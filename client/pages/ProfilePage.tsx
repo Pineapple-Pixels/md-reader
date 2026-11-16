@@ -95,8 +95,8 @@ export function ProfilePage() {
         <h1>Mi perfil</h1>
         <div className="admin-header-actions">
           <Link to="/me" className="admin-back">Volver a docs</Link>
-          <button className="theme-toggle" onClick={toggle} aria-label="Cambiar tema">
-            {isDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
+          <button className="admin-back" onClick={toggle} aria-label={isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro'}>
+            {isDark ? 'Claro' : 'Oscuro'}
           </button>
         </div>
       </div>

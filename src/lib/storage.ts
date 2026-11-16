@@ -171,7 +171,7 @@ export async function getFiles(dir: string, base = ''): Promise<FileEntry[]> {
       files.push({ name: rel, modified: stats.mtime });
     }
   }
-  return files.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  return files.sort((a, b) => b.modified.getTime() - a.modified.getTime() || a.name.localeCompare(b.name));
 }
 
 // Versions live under `<scope>/.versions/<encoded relative path>/<timestamp><ext>`,

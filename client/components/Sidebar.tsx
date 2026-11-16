@@ -1,10 +1,9 @@
-import { isMarkdownKind, stripDocExt } from '@shared/doc-types';
+import { docKind, stripDocExt } from '@shared/doc-types';
 import { useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore, useFavorites } from '../hooks/useNavStore';
-import { SearchIcon, ChevronRightIcon, FolderIcon, HomeIcon, FileIcon, FileGenericIcon } from './Icons';
 import s from './Sidebar.module.css';
 import type { FileEntry } from '@shared/types';
 
@@ -89,18 +88,17 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
   const recentFiles = recents();
   const displayName = (file: string) => stripDocExt(file).split('/').pop() ?? file;
+  let n = 0;
 
   return (
     <aside data-noprint className={`${s.sidebar}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
       <div className={s.sidebarHeader}>
         <div className={s.sidebarLogo}>
-          <div className={s.sidebarLogoIcon}><span>M</span></div>
-          <span className={s.sidebarLogoText}>md-reader</span>
+          <Wordmark />
         </div>
         <button className={s.sidebarSearch} onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}>
-          <SearchIcon />
-          <span>Buscar...</span>
-          <kbd style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.6 }}>⌘K</kbd>
+          <span>Buscar</span>
+          <kbd>⌘K</kbd>
         </button>
       </div>
 
@@ -139,10 +137,11 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </>
         )}
 
-        <div className={s.sidebarSectionLabel}>Documentos</div>
+        <div className={s.sidebarSectionLabel}><span>Documentos</span><span>{files?.length ?? 0}</span></div>
         {rootFiles.map((f) => (
           <SidebarItem
             key={f.name}
+            index={++n}
             file={f.name}
             displayName={displayName(f.name)}
             active={isActive(f.name)}
@@ -156,17 +155,15 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           const isOpen = openFolders[folder] !== false;
           return (
             <div key={folder}>
-              <button className={s.sidebarFolderBtn} onClick={() => toggleFolder(folder)}>
-                <span className={`${s.sidebarFolderChevron}${isOpen ? ` ${s.open}` : ''}`}>
-                  <ChevronRightIcon />
-                </span>
-                <FolderIcon />
+              <button className={s.sidebarFolderBtn} onClick={() => toggleFolder(folder)} aria-expanded={isOpen}>
+                <span className={`${s.sidebarFolderChevron}${isOpen ? ` ${s.open}` : ''}`} aria-hidden="true">+</span>
                 <span>{folder}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.5 }}>{items.length}</span>
+                <span className={s.count}>{items.length}</span>
               </button>
               {isOpen && items.map((f) => (
                 <SidebarItem
                   key={f.name}
+                  index={++n}
                   file={f.name}
                   displayName={displayName(f.name)}
                   active={isActive(f.name)}
@@ -182,8 +179,8 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       </div>
 
       <div className={s.sidebarFooter}>
-        <button className={s.sidebarItem} onClick={() => { navigate(urlPrefix); onMobileClose?.(); }} style={{ width: '100%' }}>
-          <HomeIcon />
+        <button className={s.sidebarItem} onClick={() => { navigate(urlPrefix); onMobileClose?.(); }}>
+          <span aria-hidden="true">←</span>
           <span>Todos los documentos</span>
         </button>
       </div>
@@ -238,16 +235,12 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <button
               className={s.sidebarFolderBtn}
               onClick={() => toggleFolder(item.path)}
-              style={depth > 0 ? { paddingLeft: 14 + depth * 12 } : undefined}
+              aria-expanded={!isCollapsed}
+              style={depth > 0 ? { paddingLeft: 4 + depth * 12 } : undefined}
             >
-              <span className={`${s.sidebarFolderChevron}${!isCollapsed ? ` ${s.open}` : ''}`}>
-                <ChevronRightIcon />
-              </span>
-              <FolderIcon />
+              <span className={`${s.sidebarFolderChevron}${!isCollapsed ? ` ${s.open}` : ''}`} aria-hidden="true">+</span>
               <span>{item.name}</span>
-              {item.children && (
-                <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.5 }}>{item.children.length}</span>
-              )}
+              {item.children && <span className={s.count}>{item.children.length}</span>}
             </button>
             {!isCollapsed && item.children && (
               <div>{renderTree(item.children, depth + 1)}</div>
@@ -261,12 +254,9 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           key={item.path}
           className={`${s.sidebarItem}${isActive ? ` ${s.active}` : ''}`}
           onClick={() => goToPage(item.path)}
-          style={{ paddingLeft: 14 + depth * 12 }}
+          style={depth > 0 ? { paddingLeft: 4 + depth * 12 } : undefined}
         >
-          <FileIcon />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {stripDocExt(item.name)}
-          </span>
+          <span className={s.name}>{stripDocExt(item.name)}</span>
         </button>
       );
     });
@@ -279,7 +269,6 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     <aside data-noprint className={`${s.sidebar} ${s.sidebarProject}${mobileOpen ? ` ${s.mobileOpen}` : ''}`}>
       <div className={s.sidebarHeader}>
         <div className={s.sidebarLogo}>
-          <FolderIcon size={16} />
           <span className={s.sidebarLogoText}>{folder}</span>
         </div>
       </div>
@@ -298,21 +287,13 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
       <div className={s.sidebarFooter}>
         {canWrite && editUrl && (
-          <button
-            className={s.sidebarItem}
-            onClick={() => { navigate(editUrl); onMobileClose?.(); }}
-            style={{ width: '100%' }}
-          >
-            <FileGenericIcon />
+          <button className={s.sidebarItem} onClick={() => { navigate(editUrl); onMobileClose?.(); }}>
+            <span aria-hidden="true">✎</span>
             <span>Editar</span>
           </button>
         )}
-        <button
-          className={s.sidebarItem}
-          onClick={() => { navigate(urlPrefix); onMobileClose?.(); }}
-          style={{ width: '100%' }}
-        >
-          <HomeIcon />
+        <button className={s.sidebarItem} onClick={() => { navigate(urlPrefix); onMobileClose?.(); }}>
+          <span aria-hidden="true">←</span>
           <span>Volver a documentos</span>
         </button>
       </div>
@@ -320,7 +301,16 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   );
 }
 
-function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClick, indent }: {
+/** The app's typographic logo; the letters open up on hover. */
+export function Wordmark({ className }: { className?: string }) {
+  return (
+    <span className={`${s.wordmark}${className ? ` ${className}` : ''}`}>
+      md<span className={s.wordmarkDot}>·</span>reader
+    </span>
+  );
+}
+
+function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClick, indent, index }: {
   file: string;
   displayName: string;
   active: boolean;
@@ -328,21 +318,22 @@ function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClic
   onToggleFav: () => void;
   onClick: () => void;
   indent?: boolean;
+  index?: number;
 }) {
-  const isMarkdown = isMarkdownKind(file);
+  const kind = docKind(file);
   return (
     <button
-      className={`${s.sidebarItem}${active ? ` ${s.active}` : ''}`}
+      className={`${s.sidebarItem}${active ? ` ${s.active}` : ''}${indent ? ` ${s.indent}` : ''}`}
       onClick={onClick}
-      style={indent ? { paddingLeft: 28 } : undefined}
     >
-      {isMarkdown ? <FileIcon /> : <FileGenericIcon />}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayName}</span>
+      <span className={s.num} aria-hidden="true">{index ? String(index).padStart(2, '0') : '—'}</span>
+      <span className={s.name}>{displayName}</span>
+      {kind && kind !== 'md' && <span className={s.kind}>{kind.toUpperCase()}</span>}
       <button
         type="button"
         className={s.sidebarFavBtn}
         onClick={(e) => { e.stopPropagation(); onToggleFav(); }}
-        style={{ opacity: favorited ? 0.8 : 0, color: favorited ? 'var(--accent)' : 'var(--text-muted)' }}
+        style={{ opacity: favorited ? 0.9 : 0 }}
         aria-label={favorited ? 'Quitar de favoritos' : 'Agregar a favoritos'}
       >
         {favorited ? '★' : '☆'}
