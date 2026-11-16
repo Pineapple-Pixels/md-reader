@@ -128,6 +128,27 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
     expect((await api(ana, '/version?scope=me&file=a/clase.md&id=..%2F..%2Fsecret.md')).status).toBe(404);
   });
 
+  it('should order docs saved at the same instant by name', async () => {
+    // Arrange
+    const fs = await import('fs/promises');
+    const dir = await mkdtemp(join(tmpdir(), 'mdreader-order-'));
+    try {
+      const when = new Date('2026-01-01T00:00:00Z');
+      for (const f of ['c.md', 'a.md', '_b.md']) {
+        await fs.writeFile(join(dir, f), f);
+        await fs.utimes(join(dir, f), when, when);
+      }
+
+      // Act
+      const files = await (await import('../src/lib/storage.js')).getFiles(dir);
+
+      // Assert
+      expect(files.map((f) => f.name)).toEqual(['_b.md', 'a.md', 'c.md']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('should list and read versions saved in the legacy by-name layout', async () => {
     // Arrange
     await api(ana, '/push?scope=me', { file: 'viejo/legado.md', content: 'actual' });

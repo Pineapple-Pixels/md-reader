@@ -6,7 +6,7 @@ import { useScope } from '../hooks/useScope';
 import { useTheme } from '../hooks/useTheme';
 import { logout } from '../hooks/logout';
 import { useNavStore } from '../hooks/useNavStore';
-import { UserIcon, TeamIcon, GlobeIcon, ChevronDownIcon, SunIcon, MoonIcon, FileIcon, HamburgerIcon } from './Icons';
+import { HamburgerIcon } from './Icons';
 import s from './Topbar.module.css';
 
 interface TopbarProps {
@@ -52,10 +52,7 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
 
   const handleLogout = logout;
 
-  const scopeIcon =
-    scope.kind === 'me' ? <UserIcon /> :
-    scope.kind === 'team' ? <TeamIcon /> :
-    <GlobeIcon />;
+  const scopeKindLabel = scope.kind === 'me' ? 'Yo' : scope.kind === 'team' ? 'Equipo' : 'Pub';
 
   const currentLabel =
     scope.kind === 'me' ? 'Mis docs' :
@@ -84,9 +81,9 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
             aria-haspopup="menu"
             aria-expanded={open}
           >
-            {scopeIcon}
+            <span className="mono-label" style={{ color: 'inherit', opacity: 0.6 }}>{scopeKindLabel}</span>
             <span>{orgLabel ? `${orgLabel} · ${currentLabel}` : currentLabel}</span>
-            <ChevronDownIcon style={{ opacity: 0.5 }} />
+            <span aria-hidden="true" className="toolbar-caret">+</span>
           </button>
           {open && (
             <div className={s.scopeMenu} role="menu">
@@ -134,15 +131,15 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
             <Link to="/admin" className={s.topbarAdmin}>Admin</Link>
           )}
           <label className={s.topbarThemePick} title="Tema de la app (no cambia los documentos)">
-            {active.tokens.base === 'dark' ? <MoonIcon /> : <SunIcon />}
+            <span aria-hidden="true">{active.tokens.base === 'dark' ? '◐' : '○'}</span>
             <select value={active.id} onChange={(e) => setActive(e.target.value)} aria-label="Tema de la app">
               {themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
           {isAuthenticated && user && (
             <Link to="/profile" className={s.topbarUserBtn} title="Mi perfil">
-              <span className={s.topbarAvatar}><span>{initials}</span></span>
-              <span>{displayName || user}</span>
+              <span className={s.topbarAvatar}>{initials}</span>
+              <span className={s.topbarUserName}>{displayName || user}</span>
             </Link>
           )}
           {isAuthenticated ? (
@@ -164,7 +161,6 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
                 className={`${s.topbarTab}${isActive ? ` ${s.active}` : ''}`}
                 onClick={() => navigate(`${urlPrefix}/doc/${encodeURIComponent(file)}`)}
               >
-                <FileIcon size={12} />
                 <span>{name}</span>
                 <span
                   className={s.topbarTabClose}

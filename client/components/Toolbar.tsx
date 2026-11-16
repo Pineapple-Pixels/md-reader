@@ -38,7 +38,7 @@ function ToolbarMenu({ label, items }: { label: string; items: ToolbarItem[] }) 
   return (
     <div className="toolbar-menu" ref={ref}>
       <button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {label} <span aria-hidden="true">&#9662;</span>
+        {label} <span aria-hidden="true" className="toolbar-caret">+</span>
       </button>
       {open && (
         <div className="toolbar-menu-list" role="menu" aria-label={label}>
@@ -66,8 +66,8 @@ export function Toolbar({ actions, children }: ToolbarProps) {
         return <button key={action.label} onClick={action.onClick} className={itemClass(action)}>{action.label}</button>;
       })}
       {children}
-      <button className="theme-toggle" onClick={toggle}>
-        {isDark ? '☀️' : '🌙'}
+      <button className="theme-toggle" onClick={toggle} aria-label={isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro'}>
+        {isDark ? 'Claro' : 'Oscuro'}
       </button>
     </div>
   );

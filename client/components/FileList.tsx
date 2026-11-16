@@ -53,7 +53,7 @@ export function FileList({ files, urlPrefix = '/pub/', projectPrefix = '/pub/pro
           <ul key={folder} className="file-list">
             <li>
               <Link to={`${projectPrefix}${folder}`} style={{ fontWeight: 600 }}>
-                <span className="tree-icon">&#128193;</span> {folder}/
+                {folder}/
               </Link>
               <span className="meta">{docs.length} docs &middot; {latestDate}</span>
               {renderActions(folder)}

@@ -8,21 +8,7 @@ import type { FileEntry } from '@shared/types';
 import { docKind, isDocFile, stripDocExt } from '@shared/doc-types';
 import s from './IndexPage.module.css';
 
-function FolderCardIcon() {
-  return (
-    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M2 4a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414A1 1 0 0010.414 4H16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" />
-    </svg>
-  );
-}
-
-function FileListIcon() {
-  return (
-    <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-    </svg>
-  );
-}
+const pad = (n: number) => String(n).padStart(2, '0');
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('es-AR', {
@@ -219,8 +205,9 @@ export function IndexPage() {
 
   return (
     <div className="container">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: '1.5em' }}>{title}</h1>
+      <div className={s.indexHead}>
+        <h1 className={s.indexTitle}>{title}</h1>
+        <span className="mono-label">{pad(files.length)} docs</span>
       </div>
 
       {canWrite && (
@@ -235,11 +222,11 @@ export function IndexPage() {
           <div className="upload-actions">
             <label className="upload-btn file-btn">
               <input type="file" accept=".md,.mdx,.html" multiple style={{ display: 'none' }} onChange={(e) => handleFileSelect(e.target.files)} />
-              <span className="upload-icon">&#128196;</span> Subir Archivos
+              <span className="upload-icon" aria-hidden="true">↑</span> Subir archivos
             </label>
             <label className="upload-btn folder-btn">
               <input type="file" {...({ webkitdirectory: '' } as unknown as Record<string, string>)} style={{ display: 'none' }} onChange={(e) => handleFolderSelect(e.target.files)} />
-              <span className="upload-icon">&#128193;</span> Subir Proyecto
+              <span className="upload-icon" aria-hidden="true">↑</span> Subir proyecto
             </label>
           </div>
 
@@ -263,44 +250,43 @@ export function IndexPage() {
         <>
           {folderEntries.length > 0 && (
             <>
-              <h2 className={s.indexSectionLabel}>Carpetas</h2>
-              <div className={s.indexFolderGrid}>
-                {folderEntries.map(([folder, docs]) => {
+              <h2 className={s.indexSectionLabel}><span>Carpetas</span><span>{pad(folderEntries.length)}</span></h2>
+              <ul className={s.indexList}>
+                {folderEntries.map(([folder, docs], i) => {
                   const latestDate = formatDate(
                     new Date(Math.max(...docs.map((d) => new Date(d.modified).getTime()))).toISOString()
                   );
                   return (
-                    <Link key={folder} to={`${urlPrefix}/project/${folder}`} className={s.indexFolderCard}>
-                      <span className={s.indexFolderIcon} aria-hidden="true"><FolderCardIcon /></span>
-                      <span className={s.indexFolderInfo}>
-                        <span className={s.indexFolderName}>{folder}</span>
-                        <span className={s.indexFolderMeta}>
-                          {docs.length} {docs.length === 1 ? 'doc' : 'docs'} &middot; {latestDate}
-                        </span>
-                      </span>
-                    </Link>
+                    <li key={folder} className={s.indexRow}>
+                      <span className={s.indexNum}>{pad(i + 1)}</span>
+                      <Link to={`${urlPrefix}/project/${folder}`} className={s.indexName}>{folder}/</Link>
+                      <span className={s.indexMeta}>{docs.length} {docs.length === 1 ? 'doc' : 'docs'} · {latestDate}</span>
+                      <span />
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </>
           )}
 
           {rootFiles.length > 0 && (
             <>
-              <h2 className={s.indexSectionLabel}>Documentos</h2>
-              <ul className={s.indexFileList}>
-                {rootFiles.map((doc) => (
-                  <li key={doc.name} className={s.indexFileItem}>
-                    <span className={s.indexFileIcon} aria-hidden="true"><FileListIcon /></span>
-                    <span className={s.indexFileInfo}>
-                      <Link to={`${urlPrefix}/doc/${doc.name}`} className={s.indexFileName}>
-                        {doc.name.split('/').pop()}
-                      </Link>
-                      <span className={s.indexFileDate}>{formatDate(doc.modified)}</span>
-                    </span>
-                    {renderActions(doc.name)}
-                  </li>
-                ))}
+              <h2 className={s.indexSectionLabel}><span>Documentos</span><span>{pad(rootFiles.length)}</span></h2>
+              <ul className={s.indexList}>
+                {rootFiles.map((doc, i) => {
+                  const kind = docKind(doc.name);
+                  return (
+                    <li key={doc.name} className={s.indexRow}>
+                      <span className={s.indexNum}>{pad(i + 1)}</span>
+                      <span className={s.indexName}>
+                        <Link to={`${urlPrefix}/doc/${doc.name}`} className={s.indexName}>{stripDocExt(doc.name)}</Link>
+                        {kind && kind !== 'md' && <span className={s.indexKind}>{kind.toUpperCase()}</span>}
+                      </span>
+                      <span className={s.indexMeta}>{formatDate(doc.modified)}</span>
+                      {renderActions(doc.name) ?? <span />}
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
