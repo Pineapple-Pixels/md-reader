@@ -1,4 +1,4 @@
-import { docKind, stripDocExt } from '@shared/doc-types';
+import { docKind, kindSummary, stripDocExt } from '@shared/doc-types';
 import { useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -158,7 +158,7 @@ function DocsSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <button className={s.sidebarFolderBtn} onClick={() => toggleFolder(folder)} aria-expanded={isOpen}>
                 <span className={`${s.sidebarFolderChevron}${isOpen ? ` ${s.open}` : ''}`} aria-hidden="true">+</span>
                 <span>{folder}</span>
-                <span className={s.count}>{items.length}</span>
+                <span className={s.count}>{kindSummary(items.map((f) => f.name))}</span>
               </button>
               {isOpen && items.map((f) => (
                 <SidebarItem
@@ -257,6 +257,7 @@ function ProjectSidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           style={depth > 0 ? { paddingLeft: 4 + depth * 12 } : undefined}
         >
           <span className={s.name}>{stripDocExt(item.name)}</span>
+          {docKind(item.name) && <span className={s.kind}>{docKind(item.name)!.toUpperCase()}</span>}
         </button>
       );
     });
@@ -327,7 +328,7 @@ function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClic
     >
       <span className={s.num} aria-hidden="true">{index ? String(index).padStart(2, '0') : '—'}</span>
       <span className={s.name}>{displayName}</span>
-      {kind && kind !== 'md' && <span className={s.kind}>{kind.toUpperCase()}</span>}
+      {kind && <span className={s.kind}>{kind.toUpperCase()}</span>}
       <button
         type="button"
         className={s.sidebarFavBtn}

@@ -17,6 +17,19 @@ export function stripDocExt(file: string): string {
   return file.replace(EXT_RE, '');
 }
 
+/** How many documents of each kind a folder holds, e.g. "2 MD · 1 HTML". */
+export function kindSummary(files: string[]): string {
+  const counts = new Map<DocKind, number>();
+  for (const f of files) {
+    const k = docKind(f);
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return (['md', 'mdx', 'html'] as const)
+    .filter((k) => counts.has(k))
+    .map((k) => `${counts.get(k)} ${k.toUpperCase()}`)
+    .join(' · ');
+}
+
 /** Markdown-like documents: rendered on the sheet, exportable to PDF and Word. */
 export function isMarkdownKind(file: string): boolean {
   const k = docKind(file);

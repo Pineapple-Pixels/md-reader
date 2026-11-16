@@ -1,12 +1,12 @@
 import { stripDocExt } from '@shared/doc-types';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type RefObject } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useScope } from '../hooks/useScope';
 import { useTheme } from '../hooks/useTheme';
 import { logout } from '../hooks/logout';
 import { useNavStore } from '../hooks/useNavStore';
-import { HamburgerIcon } from './Icons';
+import { ChevronDownIcon, HamburgerIcon, UserIcon } from './Icons';
 import s from './Topbar.module.css';
 
 interface TopbarProps {
@@ -28,15 +28,10 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
 
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+  useDismiss(menuRef, open, () => setOpen(false));
+  const [userOpen, setUserOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  useDismiss(userMenuRef, userOpen, () => setUserOpen(false));
 
   async function switchOrg(slug: string) {
     setOpen(false);
@@ -50,16 +45,11 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
     if (res.ok) window.location.assign('/me');
   }
 
-  const handleLogout = logout;
-
-  const scopeKindLabel = scope.kind === 'me' ? 'Yo' : scope.kind === 'team' ? 'Equipo' : 'Pub';
-
   const currentLabel =
     scope.kind === 'me' ? 'Mis docs' :
     scope.kind === 'team' ? teams.find((t) => t.slug === scope.slug)?.name ?? scope.slug :
     'Publicos';
 
-  const breadcrumbs = buildBreadcrumbs(location.pathname, urlPrefix);
   const initials = (displayName || user || '?').slice(0, 2).toUpperCase();
 
   return (
@@ -69,7 +59,7 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
           type="button"
           className={s.hamburgerBtn}
           onClick={onHamburgerClick}
-          aria-label="Abrir menu lateral"
+          aria-label="Mostrar u ocultar menu lateral"
         >
           <HamburgerIcon />
         </button>
@@ -81,9 +71,8 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
             aria-haspopup="menu"
             aria-expanded={open}
           >
-            <span className="mono-label" style={{ color: 'inherit', opacity: 0.6 }}>{scopeKindLabel}</span>
             <span>{orgLabel ? `${orgLabel} · ${currentLabel}` : currentLabel}</span>
-            <span aria-hidden="true" className="toolbar-caret">+</span>
+            <ChevronDownIcon size={12} aria-hidden="true" />
           </button>
           {open && (
             <div className={s.scopeMenu} role="menu">
@@ -111,41 +100,45 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
           )}
         </div>
 
-        <nav className={s.topbarBreadcrumbs} aria-label="Breadcrumbs">
-          {breadcrumbs.map((crumb, i) => (
-            <span key={i}>
-              {i > 0 && <span className={s.sep}>/</span>}
-              {crumb.href ? (
-                <Link to={crumb.href}>{crumb.label}</Link>
-              ) : crumb.isEditor ? (
-                <span className={s.editorHint}>{crumb.label}</span>
-              ) : (
-                <span className={s.current}>{crumb.label}</span>
-              )}
-            </span>
-          ))}
-        </nav>
+        <span className={s.topbarSpacer} />
 
-        <div className={s.topbarRight}>
-          {isAuthenticated && role === 'admin' && (
-            <Link to="/admin" className={s.topbarAdmin}>Admin</Link>
-          )}
-          <label className={s.topbarThemePick} title="Tema de la app (no cambia los documentos)">
-            <span aria-hidden="true">{active.tokens.base === 'dark' ? '◐' : '○'}</span>
-            <select value={active.id} onChange={(e) => setActive(e.target.value)} aria-label="Tema de la app">
-              {themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </label>
-          {isAuthenticated && user && (
-            <Link to="/profile" className={s.topbarUserBtn} title="Mi perfil">
-              <span className={s.topbarAvatar}>{initials}</span>
-              <span className={s.topbarUserName}>{displayName || user}</span>
-            </Link>
-          )}
-          {isAuthenticated ? (
-            <button onClick={handleLogout} className={s.topbarLogout}>Salir</button>
-          ) : (
-            <Link to="/login" className={s.topbarLogin}>Iniciar sesion</Link>
+        <div className={s.topbarRight} ref={userMenuRef}>
+          <button
+            type="button"
+            className={s.userBtn}
+            onClick={() => setUserOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={userOpen}
+            aria-label="Menu de usuario"
+          >
+            {isAuthenticated && user ? initials : <UserIcon size={16} />}
+          </button>
+          {userOpen && (
+            <div className={s.userMenu} role="menu">
+              {isAuthenticated && user && (
+                <div className={s.userMenuHeader}>
+                  <strong>{displayName || user}</strong>
+                  {role && <span>Rol: {role === 'admin' ? 'Admin' : 'Miembro'}</span>}
+                </div>
+              )}
+              {isAuthenticated && (
+                <Link to="/profile" className={s.userMenuItem} role="menuitem" onClick={() => setUserOpen(false)}>Mi perfil</Link>
+              )}
+              {isAuthenticated && role === 'admin' && (
+                <Link to="/admin" className={s.userMenuItem} role="menuitem" onClick={() => setUserOpen(false)}>Administración</Link>
+              )}
+              <label className={s.userMenuTheme} title="No cambia los documentos">
+                <span>Tema</span>
+                <select value={active.id} onChange={(e) => setActive(e.target.value)} aria-label="Tema de la app">
+                  {themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              {isAuthenticated ? (
+                <button type="button" className={s.userMenuItem} role="menuitem" onClick={logout}>Cerrar sesion</button>
+              ) : (
+                <Link to="/login" className={s.userMenuItem} role="menuitem" onClick={() => setUserOpen(false)}>Iniciar sesion</Link>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -177,6 +170,49 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
       )}
     </div>
   );
+}
+
+/** The current location, shown above the page content; hidden on a scope's root. */
+export function Breadcrumbs() {
+  const { urlPrefix } = useScope();
+  const location = useLocation();
+  const crumbs = buildBreadcrumbs(location.pathname, urlPrefix);
+  if (crumbs.length < 2) return null;
+  return (
+    <nav className={s.breadcrumbs} aria-label="Breadcrumbs" data-noprint>
+      {crumbs.map((crumb, i) => (
+        <span key={i}>
+          {i > 0 && <span className={s.sep}>/</span>}
+          {crumb.href ? (
+            <Link to={crumb.href}>{crumb.label}</Link>
+          ) : crumb.isEditor ? (
+            <span className={s.editorHint}>{crumb.label}</span>
+          ) : (
+            <span className={s.current}>{crumb.label}</span>
+          )}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+/** Closes a menu on a click outside `ref` or on Escape. */
+function useDismiss(ref: RefObject<HTMLElement | null>, open: boolean, close: () => void): void {
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ref, open, close]);
 }
 
 interface Crumb {

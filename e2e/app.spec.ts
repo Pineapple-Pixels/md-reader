@@ -56,7 +56,9 @@ test('should leave the document pixel-identical when the app theme changes', asy
   const mask = [page.locator('.doc-comment-add, .doc-comment-indicator, .copy-btn')];
   const before = await page.screenshot({ clip, mask });
 
+  await page.getByRole('button', { name: 'Menu de usuario' }).click();
   await page.getByLabel('Tema de la app').selectOption('black-violet');
+  await page.keyboard.press('Escape');
 
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 10, 16)');
   expect((await page.screenshot({ clip, mask })).equals(before)).toBe(true);
@@ -110,7 +112,9 @@ test('should switch organization from the scope menu', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Cambiar a Default' }).click();
 
   await expect(page.getByText('Default · Mis docs')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Menu de usuario' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Mi perfil' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Administración' })).toHaveCount(0);
 });
 
 test('should explain how to get in to an account without organization', async ({ page }) => {
@@ -127,7 +131,8 @@ test('should not leave the app theme behind after logging out', async ({ page })
   await page.goto('/me');
   await expect(page.locator('html')).toHaveClass(/themed/);
 
-  await page.getByRole('button', { name: 'Salir' }).click();
+  await page.getByRole('button', { name: 'Menu de usuario' }).click();
+  await page.getByRole('menuitem', { name: 'Cerrar sesion' }).click();
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator('html')).not.toHaveClass(/themed/);
@@ -298,4 +303,22 @@ test('should copy a document to a team and show where it came from', async ({ pa
 
   await openDoc(page, '/t/catedra/doc/programa.md');
   await expect(page.locator('.doc-origin')).toContainText('Copiado de Documentos de beto por beto');
+});
+
+// ---------- Reading layout ----------
+
+test('should hide the sidebar on desktop and keep it hidden after a reload', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+  await openDoc(page, '/me/doc/programa.md');
+  await expect(page.getByRole('navigation', { name: 'Breadcrumbs' })).toContainText('docs/programa');
+
+  await page.getByRole('button', { name: 'Mostrar u ocultar menu lateral' }).click();
+
+  await expect(page.locator('aside')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('.doc-sheet .doc h1')).toBeVisible();
+  await expect(page.locator('aside')).toBeHidden();
+  await page.getByRole('button', { name: 'Mostrar u ocultar menu lateral' }).click();
+  await expect(page.locator('aside')).toBeVisible();
 });
