@@ -2,7 +2,7 @@
 
 Guia end-to-end para levantar la app desde cero en Coolify. Todo lo que sea codigo o valor esta listo para copiar y pegar.
 
-> **Ojo:** Este archivo contiene credenciales reales. No lo subas a un repo publico.
+> **Ojo:** No pegues credenciales reales en este archivo: el repo es publico. Los valores secretos van solo en las variables de entorno de Coolify.
 
 ---
 
@@ -33,8 +33,10 @@ production
 
 ### `DATABASE_URL`
 ```
-postgres://mdreader:qPrkJEKH1UjOi258u95Zh2xJIqFKPozwoJEC5JD8YN28rcXUSmwCL69oWJR9wJId@mdreader-db:5432/mdreader
+postgres://mdreader:<PASSWORD>@mdreader-db:5432/mdreader
 ```
+
+`<PASSWORD>` es la de `mdreader-db`: copiar la **Internal URL** desde la config del servicio de Postgres en Coolify.
 
 ### `JWT_SECRET`
 
