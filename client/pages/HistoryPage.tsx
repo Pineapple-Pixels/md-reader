@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sanitizeDocHtml } from '../sanitize';
@@ -33,6 +33,8 @@ export function HistoryPage() {
     queryFn: () => scopedFetch<VersionDetail>(`/version?${fileParam}&id=${encodeURIComponent(current!)}`),
     enabled: current !== null,
   });
+  // React 19 compares this prop by reference: a new object each render would rewrite the whole document.
+  const detailHtml = useMemo(() => ({ __html: sanitizeDocHtml(detail?.html ?? '') }), [detail?.html]);
 
   async function restore(id: string) {
     if (!confirm('Restaurar esta version? Lo que hay ahora queda guardado en el historial.')) return;
@@ -76,7 +78,7 @@ export function HistoryPage() {
               <pre className="history-source">{detail.content}</pre>
             ) : (
               <DocFrame org={org}>
-                <div className="doc" dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(detail.html) }} />
+                <div className="doc" dangerouslySetInnerHTML={detailHtml} />
               </DocFrame>
             ))}
           </div>

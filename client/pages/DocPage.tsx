@@ -39,6 +39,8 @@ export function DocPage() {
   useEffect(() => { openTab(file); }, [file, openTab]);
 
   const { data, isLoading, error } = useQuery<RenderResponse>(docQuery(scopedFetch, scopeId, file));
+  // React 19 compares this prop by reference: a new object each render would rewrite the whole document.
+  const docHtml = useMemo(() => ({ __html: sanitizeDocHtml(data?.html || '') }), [data?.html]);
 
   const [activeBlock, setActiveBlock] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -309,7 +311,7 @@ export function DocPage() {
           <HtmlFrame src={scopedUrl(`/frame${fileParam}`)} title={file} />
         ) : (
           <DocFrame org={org}>
-            <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(data?.html || '') }} />
+            <div className="doc" ref={docRef} dangerouslySetInnerHTML={docHtml} />
           </DocFrame>
         )}
         {selection && activeBlock == null && (

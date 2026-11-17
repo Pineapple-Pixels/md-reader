@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { sanitizeDocHtml } from '../sanitize';
@@ -41,6 +41,8 @@ export function ProjectPage() {
   const [docHtml, setDocHtml] = useState('');
   const docRef = useRef<HTMLDivElement>(null);
   useEffect(() => highlightCode(docRef.current), [docHtml]);
+  // React 19 compares this prop by reference: a new object each render would rewrite the whole document.
+  const docHtmlProp = useMemo(() => ({ __html: sanitizeDocHtml(docHtml) }), [docHtml]);
   const [docKind, setDocKind] = useState<DocKind>('md');
   const [loadingPage, setLoadingPage] = useState(false);
 
@@ -97,7 +99,7 @@ export function ProjectPage() {
         <HtmlFrame src={scopedUrl(`/frame?file=${encodeURIComponent(currentPage)}`)} title={currentPage} />
       ) : (
         <DocFrame org={org}>
-          <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(docHtml) }} />
+          <div className="doc" ref={docRef} dangerouslySetInnerHTML={docHtmlProp} />
         </DocFrame>
       )}
     </div>

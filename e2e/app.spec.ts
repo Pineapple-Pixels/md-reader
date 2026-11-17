@@ -309,6 +309,22 @@ test('should open the comments of the selected block with Ctrl+Alt+M', async ({ 
   await expect(page.getByText('Comentarios (linea 3)')).toBeVisible();
 });
 
+test('should keep the rendered document, its copy buttons and colored code when the page re-renders', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await openDoc(page, '/me/doc/programa.md');
+  await page.locator('.doc h1').evaluate((h) => h.setAttribute('data-probe', 'kept'));
+
+  // Selecting and clearing text re-renders the page twice.
+  await page.locator('.doc p').first().selectText();
+  await expect(page.getByRole('button', { name: 'Añadir comentario' })).toBeVisible();
+  await page.locator('.doc p').first().evaluate(() => getSelection()?.removeAllRanges());
+  await expect(page.getByRole('button', { name: 'Añadir comentario' })).toHaveCount(0);
+
+  await expect(page.locator('.doc h1[data-probe="kept"]')).toHaveCount(1);
+  await expect(page.locator('.doc .copy-btn')).toHaveCount(1);
+  await expect(page.locator('.doc pre code.hljs')).toHaveCount(1);
+});
+
 test('should fetch a document on sidebar hover so opening it needs no new request', async ({ page }) => {
   await login(page, BETO, 'facu-b');
   await openDoc(page, '/me/doc/programa.md');
