@@ -180,3 +180,7 @@ export function EyeIcon(props: IconProps) {
 export function SaveIcon(props: IconProps) {
   return <Stroke {...props}><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" /></Stroke>;
 }
+
+export function CommentAddIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.5A8 8 0 1 1 21 12zM12 8.5v7M8.5 12h7" /></Stroke>;
+}

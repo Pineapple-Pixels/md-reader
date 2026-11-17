@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { ToastProvider } from './hooks/useToast';
@@ -5,13 +6,15 @@ import { ScopeLayout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { IndexPage } from './pages/IndexPage';
 import { DocPage } from './pages/DocPage';
-import { EditorPage } from './pages/EditorPage';
-import { HistoryPage } from './pages/HistoryPage';
 import { SourcePage } from './pages/SourcePage';
 import { ProjectPage } from './pages/ProjectPage';
-import { ArchivedPage } from './pages/ArchivedPage';
-import { AdminPage } from './pages/AdminPage';
-import { ProfilePage } from './pages/ProfilePage';
+
+// Reading routes stay in the main bundle; writing and settings load on first visit.
+const EditorPage = lazy(() => import('./pages/EditorPage').then((m) => ({ default: m.EditorPage })));
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const ArchivedPage = lazy(() => import('./pages/ArchivedPage').then((m) => ({ default: m.ArchivedPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 
 // Rutas del cliente. Los scopes son los tres prefijos estables:
 //   /me/*      → docs privados del user (requiere auth)
@@ -25,6 +28,7 @@ export function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
+        <Suspense fallback={<div className="container"><p className="loading-msg">Cargando...</p></div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminPage />} />
@@ -67,6 +71,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/me" replace />} />
           <Route path="*" element={<Navigate to="/me" replace />} />
         </Routes>
+        </Suspense>
       </ToastProvider>
     </ThemeProvider>
   );
