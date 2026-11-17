@@ -92,8 +92,8 @@ export function IndexPage() {
           method: 'POST',
           body: JSON.stringify({ file: path, content }),
         });
-      } catch (err) {
-        rejected.push(`${path} (${err instanceof ApiError && err.body?.['script'] ? 'trae JavaScript' : 'error'})`);
+      } catch {
+        rejected.push(`${path} (error)`);
       }
     }
     const uploaded = readFiles.length - rejected.length;

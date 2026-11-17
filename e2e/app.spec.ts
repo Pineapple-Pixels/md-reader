@@ -269,22 +269,21 @@ test('should offer a comment on the selected text, like Google Docs, and not on 
   expect(Math.abs(panel.y - bar.y)).toBeLessThanOrEqual(12);
 });
 
-test('should show an HTML document saved with a script without running it', async ({ page }) => {
+test('should run an HTML document script without reaching the session, the API or the app', async ({ page }) => {
   await login(page, BETO, 'facu-b');
   await useTheme(page, 'light');
   await page.goto('/me/doc/simulador.html');
   const frame = page.frameLocator('iframe.html-frame');
 
   await expect(frame.getByRole('heading', { name: 'Simulador interactivo' })).toBeVisible();
-  // The script would rewrite both lines at once; give it time to prove it never ran.
-  await page.waitForLoadState('networkidle');
-  await expect(frame.locator('#cookie')).toHaveText('cookie: ?');
-  await expect(frame.locator('#api')).toHaveText('api: esperando');
+  await expect(frame.locator('#cookie')).toHaveText('cookie: oculta');
+  await expect(frame.locator('#api')).toHaveText('api: bloqueada');
+  await expect(frame.locator('#padre')).toHaveText('padre: bloqueado');
   // Earlier tests edit docs, so the sidebar order depends on timing: masked so the capture is stable.
   await expect(page).toHaveScreenshot('doc-html.png', { mask: [page.locator('aside')] });
 });
 
-test('should refuse to upload an HTML file with JavaScript and still upload the rest', async ({ page }) => {
+test('should upload HTML files with and without JavaScript', async ({ page }) => {
   await login(page, BETO, 'facu-b');
   await page.goto('/me');
 
@@ -293,11 +292,11 @@ test('should refuse to upload an HTML file with JavaScript and still upload the 
     { name: 'sin-script.html', mimeType: 'text/html', buffer: Buffer.from('<h1>Sin script</h1>') },
   ]);
 
-  await expect(page.locator('.toast')).toContainText('1 subidos. No se subieron: con-script.html (trae JavaScript)');
-  expect((await page.request.get('/api/pull?scope=me&file=con-script.html')).status()).toBe(404);
-  expect((await page.request.get('/api/pull?scope=me&file=sin-script.html')).ok()).toBe(true);
+  await expect(page.locator('.toast')).toContainText('2 archivos subidos');
   // Later tests capture this user's lists.
-  expect((await page.request.delete('/api/delete?scope=me', { data: { file: 'sin-script.html' } })).ok()).toBe(true);
+  for (const file of ['con-script.html', 'sin-script.html']) {
+    expect((await page.request.delete('/api/delete?scope=me', { data: { file } })).ok()).toBe(true);
+  }
 });
 
 test('should open the comments of the selected block with Ctrl+Alt+M', async ({ page }) => {

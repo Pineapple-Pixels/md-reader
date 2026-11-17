@@ -6,7 +6,6 @@ import archiver from 'archiver';
 import { z } from 'zod';
 import { renderDoc, sendHtmlFrame } from '../lib/render.js';
 import { sendDocx } from '../lib/docx.js';
-import { findHtmlScript } from '../lib/html-scripts.js';
 import { copyDocs, deleteOrigins, getOrigin, isSafeRelPath, moveOrigins } from '../lib/share.js';
 import { docKind, isDocFile } from '../../shared/doc-types.js';
 import {
@@ -160,15 +159,6 @@ function writableDocPath(file: string | null | undefined, scope: ResolvedScope, 
   return filePath;
 }
 
-/** Answers 400 when an HTML document carries JavaScript; the viewer never runs it anyway. */
-function rejectHtmlScript(file: string, content: string, res: Response): boolean {
-  if (docKind(file) !== 'html') return false;
-  const reason = findHtmlScript(content);
-  if (!reason) return false;
-  res.status(400).json({ error: `El HTML trae JavaScript (${reason}). Sacalo y volve a subirlo`, script: true });
-  return true;
-}
-
 // Search index
 router.get('/search-index', ah(async (req, res) => {
   const scope = getScope(req, res);
@@ -279,7 +269,6 @@ router.post('/push', ah(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'file y content son requeridos' });
   const { file, content, createOnly } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
-  if (rejectHtmlScript(file, content, res)) return;
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const written = await withFileLock(filePath, async () => {
@@ -304,7 +293,6 @@ router.post('/save', ah(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'file, content y baseHash son requeridos' });
   const { file, content, baseHash, force } = parsed.data;
   if (!isWritableDocPath(file)) return res.status(400).json({ error: 'Ruta invalida' });
-  if (rejectHtmlScript(file, content, res)) return;
   const filePath = resolveDoc(file, scope.basePath);
   if (!filePath) return res.status(400).json({ error: 'Ruta invalida' });
   const outcome = await withFileLock(filePath, async () => {
