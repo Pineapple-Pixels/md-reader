@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/useScope';
 import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
 import { HtmlFrame } from '../components/HtmlFrame';
-import { ArchiveIcon, ArrowLeftIcon, ClockIcon, CodeIcon, CommentAddIcon, DownloadIcon, PencilIcon, ShareIcon, TrashIcon } from '../components/Icons';
+import { ArchiveIcon, ArrowLeftIcon, ClockIcon, CodeIcon, CommentAddIcon, DownloadIcon, ExternalIcon, PencilIcon, ShareIcon, TrashIcon } from '../components/Icons';
 import { isMarkdownKind } from '@shared/doc-types';
 import { ApiError } from '@shared/api';
 import { useNavStore } from '../hooks/useNavStore';
@@ -266,6 +266,10 @@ export function DocPage() {
     { label: 'Volver', href: urlPrefix, icon: <ArrowLeftIcon /> },
     { label: commentLabel, href: sourceUrl, icon: <CodeIcon />, badge: data?.commentCount },
   ];
+  const isHtml = data?.kind === 'html';
+  if (isHtml) {
+    actions.push({ label: 'Abrir en pestaña nueva', onClick: () => window.open(scopedUrl(`/frame${fileParam}`), '_blank', 'noopener'), icon: <ExternalIcon /> });
+  }
 
   if (canWrite) {
     actions.push({ label: 'Editar', href: `${urlPrefix}/edit/${file}`, primary: true, icon: <PencilIcon size={16} /> });
@@ -298,7 +302,7 @@ export function DocPage() {
   const origin = data?.origin;
 
   return (
-    <div className="container">
+    <div className={isHtml ? 'container html-doc' : 'container'}>
       <Toolbar actions={actions} />
       {copying && <CopyToTeam file={file} onClose={() => setCopying(false)} />}
       {origin && (
@@ -307,7 +311,7 @@ export function DocPage() {
         </p>
       )}
       <div className="doc-with-comments">
-        {data?.kind === 'html' ? (
+        {isHtml ? (
           <HtmlFrame src={scopedUrl(`/frame${fileParam}`)} title={file} />
         ) : (
           <DocFrame org={org}>
