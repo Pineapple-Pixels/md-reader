@@ -18,13 +18,13 @@ export function renderDoc(file: string, content: string): { kind: DocKind; html:
 }
 
 /**
- * The CSP `sandbox` directive gives the page an opaque origin and runs no script, even when
- * the page is opened directly instead of through the client's iframe.
+ * The CSP `sandbox` directive gives the page an opaque origin, even when opened directly instead
+ * of through the client's iframe: its inline scripts run, but reach no cookie, storage, parent or network.
  */
 export const HTML_FRAME_CSP = [
-  'sandbox allow-popups allow-popups-to-escape-sandbox',
+  'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox',
   "default-src 'none'",
-  "script-src 'none'",
+  "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline' https:",
   'img-src data: https:',
   'font-src data: https:',

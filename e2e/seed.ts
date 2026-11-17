@@ -42,7 +42,7 @@ Texto con **markdown** comun.
 <style>.toolbar { display: none !important; }</style>
 `;
 
-// Written straight to disk, as if saved before scripts were refused: the viewer must not run it.
+// Its script runs in the viewer and reports what the sandbox lets it reach.
 const SAMPLE_HTML = `<!doctype html>
 <html lang="es">
 <head><meta charset="utf-8"><title>Simulador</title>
@@ -51,6 +51,7 @@ const SAMPLE_HTML = `<!doctype html>
 <h1>Simulador interactivo</h1>
 <p id="cookie">cookie: ?</p>
 <p id="api">api: esperando</p>
+<p id="padre">padre: ?</p>
 <script>
   var c = document.getElementById('cookie');
   try { c.textContent = 'cookie: ' + (document.cookie ? 'visible' : 'oculta'); }
@@ -59,6 +60,9 @@ const SAMPLE_HTML = `<!doctype html>
     .then(function (r) { return r.ok ? 'api: abierta' : 'api: rechazada'; })
     .catch(function () { return 'api: bloqueada'; })
     .then(function (t) { document.getElementById('api').textContent = t; });
+  var p = document.getElementById('padre');
+  try { p.textContent = 'padre: ' + (parent.document.title ? 'visible' : 'vacio'); }
+  catch (e) { p.textContent = 'padre: bloqueado'; }
 </script>
 </body>
 </html>
