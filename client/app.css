@@ -100,7 +100,6 @@ body { font-family: var(--font-body); line-height: 1.6; color: var(--text); back
 .toolbar .icon-only:hover, .toolbar .icon-only[aria-expanded="true"] { background: var(--text); color: var(--bg); }
 .toolbar .primary { background: var(--accent); color: var(--on-accent); }
 .toolbar .primary:hover { background: var(--accent-hover); }
-.toolbar .theme-toggle { margin-left: auto; border-right: none; border-left: 1px solid var(--border); }
 .toolbar > .delete-btn:hover { background: var(--danger); color: var(--paper); }
 .toolbar-badge { position: absolute; top: 4px; right: 3px; min-width: 18px; height: 18px; padding: 0 4px; font-family: var(--font-mono); font-size: 12px; line-height: 18px; text-align: center; background: var(--accent); color: var(--on-accent); }
 
@@ -312,7 +311,7 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 pre > .doc-comment-add,
 pre > .doc-comment-indicator { right: 60px; top: 6px; }
 
-.inline-comment-panel { position: fixed; top: 80px; right: 20px; width: 340px; max-height: calc(100vh / var(--z) - 120px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 0; box-shadow: none; overflow-y: auto; z-index: 100; }
+.inline-comment-panel { position: fixed; top: 150px; right: 20px; width: 340px; max-height: calc(100vh / var(--z) - 190px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 0; box-shadow: none; overflow-y: auto; z-index: 100; }
 .inline-comment-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
 .inline-comment-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); padding: 0 4px; }
 .inline-comment-close:hover { color: var(--danger); }
@@ -407,8 +406,6 @@ pre > .doc-comment-indicator { right: 60px; top: 6px; }
   .toolbar > a, .toolbar > button, .toolbar > .toolbar-menu { flex: 1 1 0; min-width: 36px; }
   .toolbar > .toolbar-menu > button, .toolbar .icon-only { width: 100%; }
   .toolbar > .primary { flex: 0 0 auto; padding: 0 12px; }
-  /* On a phone the theme stays in the user menu, so the row fits with Editar's label. */
-  .toolbar .theme-toggle { display: none; }
 }
 
 /* === Appearance (user app themes) === */
