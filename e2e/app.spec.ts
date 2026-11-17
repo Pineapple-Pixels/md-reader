@@ -245,18 +245,35 @@ test('should render MDX as a document without its imports or JSX comments', asyn
   await expect(page.getByText('Comentarios (linea 3)')).toBeVisible();
 });
 
-test('should run HTML documents sandboxed, without the viewer cookie or the API', async ({ page }) => {
+test('should show an HTML document saved with a script without running it', async ({ page }) => {
   await login(page, BETO, 'facu-b');
   await useTheme(page, 'light');
   await page.goto('/me/doc/simulador.html');
   const frame = page.frameLocator('iframe.html-frame');
 
   await expect(frame.getByRole('heading', { name: 'Simulador interactivo' })).toBeVisible();
-  await expect(frame.locator('#cookie')).toHaveText('cookie: oculta');
-  await expect(frame.locator('#api')).not.toHaveText('api: esperando');
-  await expect(frame.locator('#api')).not.toHaveText('api: abierta');
+  // The script would rewrite both lines at once; give it time to prove it never ran.
+  await page.waitForLoadState('networkidle');
+  await expect(frame.locator('#cookie')).toHaveText('cookie: ?');
+  await expect(frame.locator('#api')).toHaveText('api: esperando');
   // Earlier tests edit docs, so the sidebar order depends on timing: masked so the capture is stable.
   await expect(page).toHaveScreenshot('doc-html.png', { mask: [page.locator('aside')] });
+});
+
+test('should refuse to upload an HTML file with JavaScript and still upload the rest', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await page.goto('/me');
+
+  await page.locator('.file-btn input[type="file"]').setInputFiles([
+    { name: 'con-script.html', mimeType: 'text/html', buffer: Buffer.from('<h1>x</h1><script>alert(1)</script>') },
+    { name: 'sin-script.html', mimeType: 'text/html', buffer: Buffer.from('<h1>Sin script</h1>') },
+  ]);
+
+  await expect(page.locator('.toast')).toContainText('1 subidos. No se subieron: con-script.html (trae JavaScript)');
+  expect((await page.request.get('/api/pull?scope=me&file=con-script.html')).status()).toBe(404);
+  expect((await page.request.get('/api/pull?scope=me&file=sin-script.html')).ok()).toBe(true);
+  // Later tests capture this user's lists.
+  expect((await page.request.delete('/api/delete?scope=me', { data: { file: 'sin-script.html' } })).ok()).toBe(true);
 });
 
 // ---------- Export ----------

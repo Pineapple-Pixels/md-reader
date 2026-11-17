@@ -47,7 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 300);
       timersRef.current.add(removeTimer);
-    }, 3000);
+    }, type === 'error' ? 6000 : 3000);
     timersRef.current.add(hideTimer);
   }, []);
 

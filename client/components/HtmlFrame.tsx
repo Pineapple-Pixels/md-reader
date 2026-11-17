@@ -8,7 +8,7 @@ export function HtmlFrame({ src, title }: { src: string; title: string }) {
       className="html-frame"
       src={src}
       title={title}
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      sandbox="allow-popups allow-popups-to-escape-sandbox"
       referrerPolicy="no-referrer"
     />
   );

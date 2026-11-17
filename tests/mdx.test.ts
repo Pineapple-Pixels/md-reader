@@ -77,9 +77,11 @@ describe('renderDoc', () => {
 });
 
 describe('HTML_FRAME_CSP', () => {
-  it('should sandbox HTML documents into an opaque origin without forms or top navigation', () => {
-    expect(HTML_FRAME_CSP.startsWith('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox;')).toBe(true);
-    expect(HTML_FRAME_CSP).not.toMatch(/allow-same-origin|allow-forms|allow-top-navigation/);
+  it('should sandbox HTML documents into an opaque origin without scripts, forms or top navigation', () => {
+    expect(HTML_FRAME_CSP.startsWith('sandbox allow-popups allow-popups-to-escape-sandbox;')).toBe(true);
+    expect(HTML_FRAME_CSP).not.toMatch(/allow-scripts|allow-same-origin|allow-forms|allow-top-navigation/);
+    expect(HTML_FRAME_CSP).toContain("script-src 'none'");
+    expect(HTML_FRAME_CSP).toContain("connect-src 'none'");
     expect(HTML_FRAME_CSP).toContain("frame-ancestors 'self'");
   });
 });
