@@ -3,6 +3,9 @@
 .app-body { display: flex; flex: 1; overflow: hidden; }
 .app-main { flex: 1; overflow-y: auto; background: var(--bg); }
 .app-main > * { zoom: var(--z); }
+.app-main:has(:global(.html-doc)) { display: flex; flex-direction: column; overflow: hidden; }
+.app-main:has(:global(.html-doc)) > [aria-label="Breadcrumbs"] { display: none; }
+.app-main:has(:global(.html-doc)) > :global(.html-doc) { flex: 1; min-height: 0; }
 
 @media (min-width: 769px) {
   .sidebar-hidden > aside { display: none; }
@@ -10,6 +13,7 @@
 /* Offsetting the sidebar's width centres the reading column on the window, not on the leftover space. */
 @media (min-width: 1400px) {
   .app-body:not(.sidebar-hidden) .app-main { padding-right: calc(268px * var(--z)); }
+  .app-body:not(.sidebar-hidden) .app-main:has(:global(.html-doc)) { padding-right: 0; }
 }
 
 /* === Mobile sidebar backdrop === */

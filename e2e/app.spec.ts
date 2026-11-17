@@ -283,6 +283,40 @@ test('should run an HTML document script without reaching the session, the API o
   await expect(page).toHaveScreenshot('doc-html.png', { mask: [page.locator('aside')] });
 });
 
+test('should fill the main area with an HTML document and open it alone in a new tab', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+  await page.goto('/me/doc/simulador.html');
+  const main = page.locator('main');
+  const frame = page.locator('iframe.html-frame');
+  await expect(page.frameLocator('iframe.html-frame').getByRole('heading', { name: 'Simulador interactivo' })).toBeVisible();
+
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    const area = (await main.boundingBox())!;
+    const box = (await frame.boundingBox())!;
+    expect(Math.abs(area.y + area.height - (box.y + box.height))).toBeLessThanOrEqual(20);
+    expect(box.width).toBeGreaterThan(area.width * 0.9);
+    expect(await main.evaluate((m) => m.scrollHeight <= m.clientHeight)).toBe(true);
+  }
+  await expect(page.getByLabel('Breadcrumbs')).toBeHidden();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // The sidebar slides out after the resize; wait for the toolbar to settle.
+  await expect.poll(() => page.locator('.toolbar').evaluate((t) =>
+    t.lastElementChild!.getBoundingClientRect().right <= t.getBoundingClientRect().right + 1)).toBe(true);
+  await expect(page.getByRole('link', { name: 'Editar' })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const [tab] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.getByRole('button', { name: 'Abrir en pestaña nueva' }).click(),
+  ]);
+  await expect(tab).toHaveURL(/\/api\/frame\?.*file=simulador\.html/);
+  await expect(tab.getByRole('heading', { name: 'Simulador interactivo' })).toBeVisible();
+  await expect(tab.locator('#api')).toHaveText('api: bloqueada');
+  await tab.close();
+});
+
 test('should upload HTML files with and without JavaScript', async ({ page }) => {
   await login(page, BETO, 'facu-b');
   await page.goto('/me');

@@ -184,3 +184,7 @@ export function SaveIcon(props: IconProps) {
 export function CommentAddIcon(props: IconProps) {
   return <Stroke {...props}><path d="M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.5A8 8 0 1 1 21 12zM12 8.5v7M8.5 12h7" /></Stroke>;
 }
+
+export function ExternalIcon(props: IconProps) {
+  return <Stroke {...props}><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" /></Stroke>;
+}

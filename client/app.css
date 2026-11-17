@@ -430,6 +430,16 @@ pre > .doc-comment-indicator { right: 60px; top: 6px; }
 .editor-banner .editor-banner-note { flex-basis: 100%; color: var(--text-muted); font-size: 12px; }
 .doc-origin { margin: -12px 0 12px; font-size: 13px; color: var(--text-muted); }
 .html-frame { display: block; width: 100%; height: calc(100vh / var(--z) - 240px); min-height: 420px; border: 1px solid var(--border); border-radius: 0; background: white; }
+/* An HTML document fills the main area, so only the frame scrolls. */
+.container.html-doc { max-width: none; height: 100%; padding: 12px 20px 16px; display: flex; flex-direction: column; }
+.html-doc .toolbar { margin-bottom: 12px; }
+.html-doc .doc-with-comments { flex: 1; min-height: 0; display: flex; }
+.html-doc .html-frame { flex: 1; height: auto; min-height: 0; }
+@media (max-width: 640px) {
+  .container.html-doc { padding: 8px 8px 0; }
+  /* Nine actions do not fit at phone width: the primary one keeps its icon, and its name for screen readers. */
+  .html-doc .toolbar > .primary span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 .project-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .history-layout { display: grid; grid-template-columns: 240px 1fr; gap: 20px; align-items: start; }
 .history-list { list-style: none; border: 1px solid var(--border); border-radius: 0; overflow: hidden; }
