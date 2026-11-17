@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
-import { Outlet, useParams, Navigate } from 'react-router-dom';
-import type { Scope } from '@shared/api';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { Outlet, useParams, Navigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiFetchScoped, scopeId, type Scope } from '@shared/api';
+import { docQuery } from '../hooks/useDocQuery';
 import { ScopeProvider } from '../hooks/useScope';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../hooks/logout';
-import { SearchModal } from './SearchModal';
 import { Breadcrumbs, Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import s from './Layout.module.css';
@@ -34,6 +35,19 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
     });
   }, []);
   const closeMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+
+  // A document opened by URL is requested together with the session check, not after it.
+  const queryClient = useQueryClient();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (kind === 'public' || (kind === 'team' && !slug)) return;
+    const scope: Scope = kind === 'me' ? { kind: 'me' } : { kind: 'team', slug: slug! };
+    const docPrefix = `${kind === 'me' ? '/me' : `/t/${slug}`}/doc/`;
+    if (!pathname.startsWith(docPrefix)) return;
+    const file = decodeURIComponent(pathname.slice(docPrefix.length));
+    void queryClient.prefetchQuery(docQuery((path) => apiFetchScoped(path, scope), scopeId(scope), file));
+    // Only the first load waits on the session; later navigation goes through DocPage.
+  }, [kind, slug]);
 
   // /me y /t/:slug requieren auth. /pub es accesible sin auth.
   if (kind !== 'public') {
@@ -72,11 +86,13 @@ export function ScopeLayout({ kind }: ScopeLayoutProps) {
           )}
           <main className={s.appMain}>
             <Breadcrumbs />
-            <Outlet />
+            <Suspense fallback={<div className="container"><p className="loading-msg">Cargando...</p></div>}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>
-      {isAuthenticated && <SearchModal />}
+      {isAuthenticated && <SearchLauncher />}
     </ScopeProvider>
   );
 }
@@ -100,4 +116,25 @@ function NoOrgScreen({ name }: { name: string | null }) {
       <button className="admin-btn primary" onClick={logout}>Salir</button>
     </div>
   );
+}
+
+const SearchModal = lazy(() => import('./SearchModal').then((m) => ({ default: m.SearchModal })));
+
+/** Owns the Ctrl/Cmd+K shortcut and loads the search dialog the first time it opens. */
+function SearchLauncher() {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setOpen((o) => !o);
+      }
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+  if (!open) return null;
+  return <Suspense fallback={null}><SearchModal onClose={close} /></Suspense>;
 }

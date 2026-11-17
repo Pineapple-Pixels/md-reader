@@ -39,4 +39,7 @@ EXPOSE 3500
 
 ENV PORT=3500
 
+# Lets Coolify route traffic to a new container only once it answers, so deploys do not drop requests.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 CMD wget -qO- http://127.0.0.1:3500/health || exit 1
+
 CMD ["node", "dist/src/index.js"]

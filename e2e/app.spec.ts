@@ -33,6 +33,8 @@ async function openDoc(page: Page, path: string): Promise<void> {
   await page.goto(path);
   await expect(page.locator('.doc-sheet .doc h1')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
+  // Code is colored lazily, once highlight.js arrives; the seed documents are short enough to color it all.
+  await page.waitForFunction(() => [...document.querySelectorAll('.doc pre code')].every((c) => c.classList.contains('hljs')));
 }
 
 test('should log in on the first attempt and land in the organization', async ({ page }) => {
@@ -53,7 +55,7 @@ test('should leave the document pixel-identical when the app theme changes', asy
   const inset = 20;
   const clip = { x: box.x + inset, y: box.y + inset, width: box.width - 2 * inset, height: box.height - 2 * inset };
   // Comment and copy buttons are app controls drawn over the document, not document content.
-  const mask = [page.locator('.doc-comment-add, .doc-comment-indicator, .copy-btn')];
+  const mask = [page.locator('.doc-comment-indicator, .copy-btn')];
   const before = await page.screenshot({ clip, mask });
 
   await page.getByRole('button', { name: 'Menu de usuario' }).click();
@@ -72,6 +74,7 @@ test('should render each document with the design of its own organization', asyn
   await openDoc(page, '/me/doc/programa.md');
   await expect(page.locator('.doc-sheet')).toHaveCSS('background-color', 'rgb(251, 247, 239)');
   await expect(page.locator('.doc-brand')).toHaveText('Facultad B');
+  await expect(page.locator('.doc pre code .hljs-keyword').first()).toHaveText('const');
   await expect(page).toHaveScreenshot('doc-facultad-b.png');
 
   await openDoc(page, '/pub/default/doc/bienvenida.md');
@@ -237,12 +240,28 @@ test('should render MDX as a document without its imports or JSX comments', asyn
   await expect(page.locator('.doc')).not.toContainText('import');
   await expect(page.locator('.doc')).not.toContainText('nota para docentes');
   // Raw HTML that would act as the viewer (forms) or restyle the app (<style>) is removed.
-  await expect(page.locator('.doc form, .doc input, .doc style, .doc button:not(.doc-comment-add):not(.copy-btn)')).toHaveCount(0);
+  await expect(page.locator('.doc form, .doc input, .doc style, .doc button:not(.copy-btn)')).toHaveCount(0);
   await expect(page.locator('.toolbar')).toBeVisible();
+});
+
+test('should offer a comment on the selected text, like Google Docs, and not on a plain click', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await useTheme(page, 'light');
+  await openDoc(page, '/me/doc/clase.mdx');
+  const commentButton = page.getByRole('button', { name: 'Añadir comentario' });
 
   await page.locator('.doc h1').click();
+  await expect(page.locator('.inline-comment-panel')).toHaveCount(0);
+  await expect(commentButton).toHaveCount(0);
+
+  await page.locator('.doc h1').selectText();
+  await expect(commentButton).toBeVisible();
+  await expect(page).toHaveScreenshot('comentar-seleccion.png', { mask: [page.locator('aside')] });
+  await commentButton.click();
 
   await expect(page.getByText('Comentarios (linea 3)')).toBeVisible();
+  await expect(page.getByPlaceholder('Agregar comentario...')).toBeFocused();
+  await expect(commentButton).toHaveCount(0);
   // The panel opens level with the action bar, clear of the tabs and the breadcrumbs.
   const panel = (await page.locator('.inline-comment-panel').boundingBox())!;
   const bar = (await page.locator('.toolbar').boundingBox())!;
@@ -278,6 +297,46 @@ test('should refuse to upload an HTML file with JavaScript and still upload the 
   expect((await page.request.get('/api/pull?scope=me&file=sin-script.html')).ok()).toBe(true);
   // Later tests capture this user's lists.
   expect((await page.request.delete('/api/delete?scope=me', { data: { file: 'sin-script.html' } })).ok()).toBe(true);
+});
+
+test('should open the comments of the selected block with Ctrl+Alt+M', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await openDoc(page, '/me/doc/clase.mdx');
+
+  await page.locator('.doc h1').selectText();
+  await page.keyboard.press('Control+Alt+KeyM');
+
+  await expect(page.getByText('Comentarios (linea 3)')).toBeVisible();
+});
+
+test('should fetch a document on sidebar hover so opening it needs no new request', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  await openDoc(page, '/me/doc/programa.md');
+  const item = page.locator('aside').getByRole('button', { name: /clase/ }).first();
+
+  const prefetched = page.waitForResponse((r) => r.url().includes('/api/render') && r.url().includes('clase.mdx'));
+  await item.hover();
+  await prefetched;
+  const later: string[] = [];
+  // Only this document: the list shifts after the click and the pointer may land on (and prefetch) another one.
+  page.on('request', (r) => { if (r.url().includes('/api/render') && r.url().includes('clase.mdx')) later.push(r.url()); });
+  await item.click();
+
+  await expect(page.locator('.doc .aviso')).toHaveText('Traer la notebook cargada.');
+  expect(later).toEqual([]);
+});
+
+test('should request a document opened by URL without waiting for the session check', async ({ page }) => {
+  await login(page, BETO, 'facu-b');
+  let renderSentAt = 0;
+  let sessionDoneAt = 0;
+  page.on('request', (r) => { if (r.url().includes('/api/render') && !renderSentAt) renderSentAt = Date.now(); });
+  page.on('requestfinished', (r) => { if (r.url().includes('/api/auth/me') && !sessionDoneAt) sessionDoneAt = Date.now(); });
+
+  await openDoc(page, '/me/doc/programa.md');
+
+  expect(renderSentAt).toBeGreaterThan(0);
+  expect(renderSentAt).toBeLessThanOrEqual(sessionDoneAt);
 });
 
 // ---------- Export ----------

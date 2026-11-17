@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { sanitizeDocHtml } from '../sanitize';
+import { highlightCode } from '../highlight';
 import type { DocKind } from '@shared/doc-types';
 import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/useScope';
 import { useAuth } from '../hooks/useAuth';
@@ -9,7 +10,6 @@ import { DocFrame } from '../components/DocFrame';
 import { HtmlFrame } from '../components/HtmlFrame';
 import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
 
-declare const hljs: { highlightAll: () => void };
 
 interface ProjectData {
   tree: unknown[];
@@ -39,6 +39,8 @@ export function ProjectPage() {
 
   const [currentPage, setCurrentPage] = useState('');
   const [docHtml, setDocHtml] = useState('');
+  const docRef = useRef<HTMLDivElement>(null);
+  useEffect(() => highlightCode(docRef.current), [docHtml]);
   const [docKind, setDocKind] = useState<DocKind>('md');
   const [loadingPage, setLoadingPage] = useState(false);
 
@@ -51,7 +53,6 @@ export function ProjectPage() {
       setDocHtml(res.html);
       setDocKind(res.kind);
       setCurrentPage(pagePath);
-      setTimeout(() => hljs?.highlightAll(), 0);
     } catch {
       setDocHtml('<p style="color:var(--danger)">Error al cargar la pagina.</p>');
       setDocKind('md');
@@ -68,7 +69,6 @@ export function ProjectPage() {
       setCurrentPage(data.currentFile);
       setDocHtml(data.html);
       setDocKind(data.kind);
-      setTimeout(() => hljs?.highlightAll(), 0);
     } else {
       loadPage(target);
     }
@@ -97,7 +97,7 @@ export function ProjectPage() {
         <HtmlFrame src={scopedUrl(`/frame?file=${encodeURIComponent(currentPage)}`)} title={currentPage} />
       ) : (
         <DocFrame org={org}>
-          <div className="doc" dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(docHtml) }} />
+          <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(docHtml) }} />
         </DocFrame>
       )}
     </div>

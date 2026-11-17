@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import { useNavStore, useFavorites } from '../hooks/useNavStore';
+import { usePrefetchDoc } from '../hooks/useDocQuery';
 import s from './Sidebar.module.css';
 import type { FileEntry } from '@shared/types';
 
@@ -321,10 +322,12 @@ function SidebarItem({ file, displayName, active, favorited, onToggleFav, onClic
   index?: number;
 }) {
   const kind = docKind(file);
+  const prefetch = usePrefetchDoc();
   return (
     <button
       className={`${s.sidebarItem}${active ? ` ${s.active}` : ''}${indent ? ` ${s.indent}` : ''}`}
       onClick={onClick}
+      onPointerEnter={() => prefetch(file)}
     >
       <span className={s.num} aria-hidden="true">{index ? String(index).padStart(2, '0') : '—'}</span>
       <span className={s.name}>{displayName}</span>

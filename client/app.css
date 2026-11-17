@@ -260,13 +260,9 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
    teniamos con right: -32px (afuera) y en pantallas angostas caian fuera
    del viewport y eran imposibles de clickear. */
 .doc-with-comments { position: relative; }
-.has-inline-comments { background: var(--warning-bg); border-radius: 0; transition: background 0.15s; }
+.has-inline-comments { background: var(--warning-bg); border-radius: 0; padding-right: 32px; transition: background 0.15s; }
 .comment-active-block { background: var(--accent-bg) !important; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 0; }
-.commentable-block { cursor: pointer; padding-right: 32px; border-radius: 0; transition: background 0.15s; }
-.commentable-block:hover { background: var(--bg-hover); }
-
-.doc-comment-indicator,
-.doc-comment-add {
+.doc-comment-indicator {
   position: absolute;
   right: 6px;
   top: 6px;
@@ -293,23 +289,12 @@ button.line-num:focus-visible { outline: 2px solid var(--accent); outline-offset
 }
 .doc-comment-indicator:hover { background: var(--accent-hover); }
 
-.doc-comment-add {
-  height: 20px;
-  width: 20px;
-  min-width: 20px;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  opacity: 0.4;
-}
-.doc-comment-add:hover { opacity: 1; color: var(--accent); }
-
-/* En bloques <pre> el copy-btn ya ocupa el top-right, corremos el boton. */
-pre > .doc-comment-add,
+/* The copy button already sits top-right in code blocks. */
 pre > .doc-comment-indicator { right: 60px; top: 6px; }
+
+.doc-comment-float { position: absolute; z-index: 50; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); animation: commentFloatIn 0.12s var(--ease); }
+.doc-comment-float:hover { background: var(--text); color: var(--bg); }
+@keyframes commentFloatIn { from { opacity: 0; transform: translateY(-3px); } }
 
 .inline-comment-panel { position: fixed; top: 150px; right: 20px; width: 340px; max-height: calc(100vh / var(--z) - 190px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 0; box-shadow: none; overflow-y: auto; z-index: 100; }
 .inline-comment-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
@@ -461,7 +446,7 @@ pre > .doc-comment-indicator { right: 60px; top: 6px; }
 /* === Print: only the document sheet, with the org design === */
 @media print {
   [data-noprint], .editor-banner, .doc-origin, .inline-comment-panel,
-  .doc-comment-add, .doc-comment-indicator, .copy-btn { display: none !important; }
+  .doc-comment-float, .doc-comment-indicator, .copy-btn { display: none !important; }
   html, body { background: white !important; }
   .container { max-width: none; padding: 0; }
   .doc-sheet { border: none; border-radius: 0; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }

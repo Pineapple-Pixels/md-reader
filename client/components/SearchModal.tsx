@@ -7,8 +7,8 @@ import type { SearchEntry } from '@shared/types';
 import { useScope, useScopedFetch } from '../hooks/useScope';
 import s from './SearchModal.module.css';
 
-export function SearchModal() {
-  const [open, setOpen] = useState(false);
+/** The search dialog; SearchLauncher mounts it on Ctrl/Cmd+K, so cmdk and minisearch load only then. */
+export function SearchModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -18,7 +18,6 @@ export function SearchModal() {
   const { data: entries = [] } = useQuery<SearchEntry[]>({
     queryKey: ['search-index', scopeId],
     queryFn: () => scopedFetch('/search-index'),
-    enabled: open,
   });
 
   const miniSearch = useMemo(() => {
@@ -37,28 +36,12 @@ export function SearchModal() {
   }, [query, miniSearch, entries]);
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setOpen((o) => !o);
-      }
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    const timer = setTimeout(() => inputRef.current?.focus(), 10);
+    return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (open) {
-      setQuery('');
-      setTimeout(() => inputRef.current?.focus(), 10);
-    }
-  }, [open]);
-
-  if (!open) return null;
-
   function handleNavigate(file: string) {
-    setOpen(false);
+    onClose();
     navigate(`${urlPrefix}/doc/${file}`);
   }
 
@@ -76,7 +59,7 @@ export function SearchModal() {
   }
 
   return (
-    <div className={s.searchOverlay} onClick={() => setOpen(false)}>
+    <div className={s.searchOverlay} onClick={onClose}>
       <div className={s.searchDialog} onClick={(e) => e.stopPropagation()}>
         <Command shouldFilter={false} label="Buscar documentos">
           <Command.Input

@@ -7,15 +7,15 @@ import { useAuth } from '../hooks/useAuth';
 import { useScope, useScopedFetch, useScopedUrl, useScopeOrg } from '../hooks/useScope';
 import { CopyToTeam, useCopyTargets } from '../components/CopyToTeam';
 import { HtmlFrame } from '../components/HtmlFrame';
-import { ArchiveIcon, ArrowLeftIcon, ClockIcon, CodeIcon, DownloadIcon, PencilIcon, ShareIcon, TrashIcon } from '../components/Icons';
+import { ArchiveIcon, ArrowLeftIcon, ClockIcon, CodeIcon, CommentAddIcon, DownloadIcon, PencilIcon, ShareIcon, TrashIcon } from '../components/Icons';
 import { isMarkdownKind } from '@shared/doc-types';
 import { ApiError } from '@shared/api';
 import { useNavStore } from '../hooks/useNavStore';
+import { docQuery } from '../hooks/useDocQuery';
 import { Toolbar, type ToolbarAction, type ToolbarItem } from '../components/Toolbar';
 import { sanitizeDocHtml } from '../sanitize';
+import { highlightCode } from '../highlight';
 import type { RenderResponse, Comment } from '@shared/types';
-
-declare const hljs: { highlightAll: () => void };
 
 export function DocPage() {
   const location = useLocation();
@@ -38,10 +38,7 @@ export function DocPage() {
   const forget = useNavStore((s) => s.forget);
   useEffect(() => { openTab(file); }, [file, openTab]);
 
-  const { data, isLoading, error } = useQuery<RenderResponse>({
-    queryKey: ['doc', scopeId, file],
-    queryFn: () => scopedFetch(`/render?file=${encodeURIComponent(file)}`),
-  });
+  const { data, isLoading, error } = useQuery<RenderResponse>(docQuery(scopedFetch, scopeId, file));
 
   const [activeBlock, setActiveBlock] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -51,9 +48,8 @@ export function DocPage() {
 
   useEffect(() => {
     if (!data?.html) return;
-    const timer = setTimeout(() => {
-      hljs?.highlightAll();
-      docRef.current?.querySelectorAll('.doc pre').forEach((pre) => {
+    const stopHighlight = highlightCode(docRef.current);
+    docRef.current?.querySelectorAll('.doc pre').forEach((pre) => {
         if (pre.querySelector('.copy-btn')) return;
         const btn = document.createElement('button');
         btn.className = 'copy-btn';
@@ -71,9 +67,8 @@ export function DocPage() {
           }
         });
         pre.appendChild(btn);
-      });
-    }, 0);
-    return () => clearTimeout(timer);
+    });
+    return stopHighlight;
   }, [data?.html]);
 
   const commentsByLine = useMemo(() => {
@@ -94,10 +89,7 @@ export function DocPage() {
     if (!docRef.current || !data) return;
     // Clean previous indicators
     docRef.current.querySelectorAll('.doc-comment-indicator').forEach((el) => el.remove());
-    docRef.current.querySelectorAll('.doc-comment-add').forEach((el) => el.remove());
-    docRef.current.querySelectorAll('[data-source-line]').forEach((el) => {
-      el.classList.remove('has-inline-comments', 'comment-active-block');
-    });
+    docRef.current.querySelectorAll('.has-inline-comments').forEach((el) => el.classList.remove('has-inline-comments'));
 
     const elements = docRef.current.querySelectorAll<HTMLElement>('[data-source-line]');
     elements.forEach((el) => {
@@ -127,51 +119,46 @@ export function DocPage() {
         host.style.position = 'relative';
         host.appendChild(badge);
       }
-
-      // Commentable block hover handler
-      if (canComment) {
-        el.classList.add('commentable-block');
-        if (!blockComments.length) {
-          const addBtn = document.createElement('button');
-          addBtn.className = 'doc-comment-add';
-          addBtn.textContent = '+';
-          addBtn.title = 'Agregar comentario';
-          addBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            setActiveBlock((prev) => (prev === line ? null : line));
-          });
-          host.style.position = 'relative';
-          host.appendChild(addBtn);
-        }
-      }
-
-      // Active block marker
-      if (activeBlock === line) {
-        el.classList.add('comment-active-block');
-      }
     });
-  }, [data, commentsByLine, canComment, activeBlock]);
+  }, [data, commentsByLine]);
 
-  // Delegacion de click: tocar cualquier parte de un bloque comentable abre el
-  // panel. Ignoramos clicks en elementos interactivos (links, botones inyectados,
-  // inputs) para no romper la navegacion. Los handlers de los botones individuales
-  // hacen stopPropagation asi que no corre dos veces.
   useEffect(() => {
-    if (!canComment || !docRef.current) return;
-    const container = docRef.current;
-    function handler(e: Event) {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest('a, button, input, textarea, select, label')) return;
-      const block = target.closest<HTMLElement>('[data-source-line]');
-      if (!block || !block.classList.contains('commentable-block')) return;
-      const line = parseInt(block.getAttribute('data-source-line') || '0', 10);
-      if (!line) return;
-      setActiveBlock((prev) => (prev === line ? null : line));
+    if (activeBlock == null) return;
+    const el = docRef.current?.querySelector(`[data-source-line="${activeBlock}"]`);
+    el?.classList.add('comment-active-block');
+    return () => el?.classList.remove('comment-active-block');
+  }, [activeBlock, data]);
+
+  // Selecting text offers "Añadir comentario" for its block, like Google Docs; Ctrl+Alt+M does the same.
+  const [selection, setSelection] = useState<SelectedBlock | null>(null);
+  useEffect(() => {
+    if (!canComment) return;
+    let frame = 0;
+    function onSelectionChange() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setSelection(selectedBlock(docRef.current)));
     }
-    container.addEventListener('click', handler);
-    return () => container.removeEventListener('click', handler);
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey && e.altKey && e.code === 'KeyM')) return;
+      const block = selectedBlock(docRef.current);
+      if (!block) return;
+      e.preventDefault();
+      openComments(block.line);
+    }
+    document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [canComment, data?.html]);
+
+  function openComments(line: number) {
+    setActiveBlock(line);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }
 
   // Get comments for active block
   const activeComments: Comment[] = [];
@@ -325,6 +312,20 @@ export function DocPage() {
             <div className="doc" ref={docRef} dangerouslySetInnerHTML={{ __html: sanitizeDocHtml(data?.html || '') }} />
           </DocFrame>
         )}
+        {selection && activeBlock == null && (
+          <button
+            type="button"
+            className="icon-btn doc-comment-float"
+            style={{ top: selection.top, left: selection.left }}
+            aria-label="Añadir comentario"
+            data-tip="Añadir comentario"
+            // Keeps the selection alive until the click lands.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => openComments(selection.line)}
+          >
+            <CommentAddIcon />
+          </button>
+        )}
         {activeBlock != null && (
           <div className="inline-comment-panel">
             <div className="inline-comment-header">
@@ -350,6 +351,7 @@ export function DocPage() {
               <div className="inline-comment-form">
                 <input
                   type="text"
+                  autoFocus
                   placeholder="Agregar comentario..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
@@ -366,4 +368,29 @@ export function DocPage() {
       </div>
     </div>
   );
+}
+
+type SelectedBlock = { line: number; top: number; left: number };
+
+/** The block where the text selection starts, and where to float the comment button inside `.doc-with-comments`. */
+function selectedBlock(container: HTMLElement | null): SelectedBlock | null {
+  const sel = window.getSelection();
+  if (!container || !sel || sel.isCollapsed || sel.rangeCount === 0 || !sel.toString().trim()) return null;
+  const range = sel.getRangeAt(0);
+  if (!container.contains(range.commonAncestorContainer)) return null;
+  const start = range.startContainer;
+  const block = (start instanceof Element ? start : start.parentElement)?.closest<HTMLElement>('[data-source-line]');
+  const line = parseInt(block?.getAttribute('data-source-line') ?? '0', 10);
+  const host = container.closest('.doc-with-comments');
+  if (!block || !line || !host) return null;
+  const rects = range.getClientRects();
+  const last = rects[rects.length - 1] ?? range.getBoundingClientRect();
+  const box = host.getBoundingClientRect();
+  // Client rects are viewport pixels; the page content is scaled by --z.
+  const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--z')) || 1;
+  return {
+    line,
+    top: (last.bottom - box.top) / z + 6,
+    left: Math.min(Math.max(last.right - box.left, 0), box.width - 40) / z,
+  };
 }
