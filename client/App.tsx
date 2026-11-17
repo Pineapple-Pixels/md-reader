@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { ToastProvider } from './hooks/useToast';
-import { ScopeLayout } from './components/Layout';
+import { AccountLayout, ScopeLayout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { IndexPage } from './pages/IndexPage';
 import { DocPage } from './pages/DocPage';
@@ -31,8 +31,10 @@ export function App() {
         <Suspense fallback={<div className="container"><p className="loading-msg">Cargando...</p></div>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
+          <Route element={<AccountLayout />}>
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+          </Route>
 
           <Route path="/me" element={<ScopeLayout kind="me" />}>
             <Route index element={<IndexPage />} />

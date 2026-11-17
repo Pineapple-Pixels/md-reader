@@ -19,7 +19,7 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
   const publicOrg = scope.kind === 'public' ? scope.org : org?.slug;
   // Another org's public pages are labelled with that org, not the viewer's.
   const orgLabel = scope.kind === 'public' && scope.org !== org?.slug ? scope.org : org?.name;
-  const { themes, active, setActive, isDark, toggle } = useTheme();
+  const { isDark, toggle } = useTheme();
   const themeLabel = isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro';
   const navigate = useNavigate();
   const location = useLocation();
@@ -56,14 +56,16 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
   return (
     <div className={s.topbar} data-noprint>
       <div className={s.topbarMain}>
-        <button
-          type="button"
-          className={s.hamburgerBtn}
-          onClick={onHamburgerClick}
-          aria-label="Mostrar u ocultar menu lateral"
-        >
-          <HamburgerIcon />
-        </button>
+        {onHamburgerClick && (
+          <button
+            type="button"
+            className={s.hamburgerBtn}
+            onClick={onHamburgerClick}
+            aria-label="Mostrar u ocultar menu lateral"
+          >
+            <HamburgerIcon />
+          </button>
+        )}
         <div className={s.topbarLeft} ref={menuRef}>
           <button
             type="button"
@@ -131,12 +133,6 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
               {isAuthenticated && role === 'admin' && (
                 <Link to="/admin" className={s.userMenuItem} role="menuitem" onClick={() => setUserOpen(false)}>Administración</Link>
               )}
-              <label className={s.userMenuTheme} title="No cambia los documentos">
-                <span>Tema</span>
-                <select value={active.id} onChange={(e) => setActive(e.target.value)} aria-label="Tema de la app">
-                  {themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </label>
               {isAuthenticated ? (
                 <button type="button" className={s.userMenuItem} role="menuitem" onClick={logout}>Cerrar sesion</button>
               ) : (

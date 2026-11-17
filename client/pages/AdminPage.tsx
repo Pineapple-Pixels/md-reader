@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../hooks/useToast';
 import { UsersPanel } from './admin/UsersPanel';
 import { TeamsPanel } from './admin/TeamsPanel';
@@ -10,7 +9,6 @@ import { DesignPanel } from './admin/DesignPanel';
 
 export function AdminPage() {
   const { isAuthenticated, role, isLoading: authLoading } = useAuth();
-  const { isDark, toggle } = useTheme();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'users' | 'teams' | 'design'>('users');
@@ -33,9 +31,6 @@ export function AdminPage() {
         <h1>Administracion</h1>
         <div className="admin-header-actions">
           <Link to="/me" className="admin-back">Volver a docs</Link>
-          <button className="admin-back" onClick={toggle} aria-label={isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro'}>
-            {isDark ? 'Claro' : 'Oscuro'}
-          </button>
         </div>
       </div>
       <div className="admin-tabs">

@@ -14,9 +14,6 @@
 .user-menu-header span { font-size: 13px; color: var(--text-muted); }
 .user-menu-item { display: block; width: 100%; padding: 10px 16px; border: none; background: none; text-align: left; text-decoration: none; color: var(--text); font-size: 14px; cursor: pointer; transition: background 0.18s var(--ease); }
 .user-menu-item:hover { background: var(--bg-hover); }
-.user-menu-theme { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text); }
-.user-menu-theme select { border: 1px solid var(--border-input); background: var(--bg-card); color: var(--text); font-size: 14px; padding: 4px 6px; cursor: pointer; max-width: 150px; }
-.user-menu-theme select option { background: var(--bg-card); color: var(--text); }
 
 .topbar-spacer { flex: 1; }
 

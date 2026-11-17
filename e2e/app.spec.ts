@@ -57,14 +57,15 @@ test('should leave the document pixel-identical when the app theme changes', asy
   // Comment and copy buttons are app controls drawn over the document, not document content.
   const mask = [page.locator('.doc-comment-indicator, .copy-btn')];
   const before = await page.screenshot({ clip, mask });
+  const lightBg = await page.locator('body').evaluate((b) => getComputedStyle(b).backgroundColor);
 
-  await page.getByRole('button', { name: 'Menu de usuario' }).click();
-  await page.getByLabel('Tema de la app').selectOption('black-violet');
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Pasar a tema oscuro' }).click();
+  await page.mouse.move(640, 700);
 
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 10, 16)');
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+  await expect(page.locator('body')).not.toHaveCSS('background-color', lightBg);
   expect((await page.screenshot({ clip, mask })).equals(before)).toBe(true);
-  await expect(page).toHaveScreenshot('doc-tema-negro-violeta.png');
+  await expect(page).toHaveScreenshot('doc-tema-oscuro.png');
 });
 
 test('should render each document with the design of its own organization', async ({ page }) => {
