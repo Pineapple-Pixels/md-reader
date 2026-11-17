@@ -83,16 +83,23 @@ export function IndexPage() {
       mdFiles.map(async ({ file, path }) => ({ path, content: await file.text() }))
     );
     let done = 0;
+    const rejected: string[] = [];
     for (const { path, content } of readFiles) {
       done++;
       setUploadProgress(`Subiendo ${done}/${readFiles.length}: ${path}`);
-      await scopedFetch('/push', {
-        method: 'POST',
-        body: JSON.stringify({ file: path, content }),
-      });
+      try {
+        await scopedFetch('/push', {
+          method: 'POST',
+          body: JSON.stringify({ file: path, content }),
+        });
+      } catch (err) {
+        rejected.push(`${path} (${err instanceof ApiError && err.body?.['script'] ? 'trae JavaScript' : 'error'})`);
+      }
     }
-    setUploadProgress(`Listo! ${mdFiles.length} archivos subidos.`);
-    toast(`${mdFiles.length} archivos subidos`, 'success');
+    const uploaded = readFiles.length - rejected.length;
+    setUploadProgress(`Listo! ${uploaded} archivos subidos.`);
+    if (rejected.length === 0) toast(`${uploaded} archivos subidos`, 'success');
+    else toast(`${uploaded} subidos. No se subieron: ${rejected.join(', ')}`, 'error');
     refresh();
     setTimeout(() => setUploadProgress(''), 2000);
   }

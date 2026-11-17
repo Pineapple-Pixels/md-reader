@@ -201,18 +201,43 @@ describe.skipIf(!SERVER_URL)('document routes against Postgres', () => {
     expect(order).toEqual(['multi start', 'multi end', 'single']);
   });
 
-  it('should serve HTML documents only through the sandboxed frame', async () => {
-    await api(ana, '/push?scope=me', { file: 'demo.html', content: '<h1>Demo</h1><script>1</script>' });
+  it('should serve HTML documents only through the sandboxed frame, with scripts off', async () => {
+    // Arrange
+    expect((await api(ana, '/push?scope=me', { file: 'demo.html', content: '<h1>Demo</h1>' })).status).toBe(200);
 
+    // Act
     const render = (await (await api(ana, '/render?scope=me&file=demo.html')).json()) as { kind: string; html: string };
     const frame = await api(ana, '/frame?scope=me&file=demo.html');
 
+    // Assert
     expect(render).toMatchObject({ kind: 'html', html: '' });
     expect(frame.status).toBe(200);
-    expect(frame.headers.get('content-security-policy')).toMatch(/^sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox;/);
+    const csp = frame.headers.get('content-security-policy')!;
+    expect(csp).toMatch(/^sandbox allow-popups allow-popups-to-escape-sandbox;/);
+    expect(csp).toContain("script-src 'none'");
     expect(frame.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(await frame.text()).toContain('<script>1</script>');
+    expect(await frame.text()).toBe('<h1>Demo</h1>');
     expect((await api(ana, '/frame?scope=me&file=notas.md')).status).toBe(400);
+  });
+
+  it('should refuse to upload or save an HTML document that carries JavaScript', async () => {
+    // Arrange
+    await api(ana, '/push?scope=me', { file: 'limpio.html', content: '<p>uno</p>' });
+    const { hash } = await pull('me', 'limpio.html');
+
+    // Act
+    const pushed = await api(ana, '/push?scope=me', { file: 'malo.html', content: '<p>x</p><script>fetch("https://x.test")</script>' });
+    const saved = await api(ana, '/save?scope=me', { file: 'limpio.html', content: '<button onclick="go()">ir</button>', baseHash: hash });
+    const md = await api(ana, '/push?scope=me', { file: 'apunte.md', content: '# Apunte\n\n<script>1</script>' });
+
+    // Assert
+    expect(pushed.status).toBe(400);
+    expect(await pushed.json()).toEqual({ error: 'El HTML trae JavaScript (etiqueta <script>). Sacalo y volve a subirlo', script: true });
+    expect((await api(ana, '/pull?scope=me&file=malo.html')).status).toBe(404);
+    expect(saved.status).toBe(400);
+    expect(await saved.json()).toMatchObject({ script: true });
+    expect((await pull('me', 'limpio.html')).content).toBe('<p>uno</p>');
+    expect(md.status).toBe(200);
   });
 
   it('should export md and mdx to a Word file', async () => {

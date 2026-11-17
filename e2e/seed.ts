@@ -42,7 +42,7 @@ Texto con **markdown** comun.
 <style>.toolbar { display: none !important; }</style>
 `;
 
-// Reports what the page can reach: it runs sandboxed, so it must see no cookie and no API data.
+// Written straight to disk, as if saved before scripts were refused: the viewer must not run it.
 const SAMPLE_HTML = `<!doctype html>
 <html lang="es">
 <head><meta charset="utf-8"><title>Simulador</title>

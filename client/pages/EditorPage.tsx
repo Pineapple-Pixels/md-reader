@@ -121,6 +121,7 @@ function Editor({ file }: { file: string }) {
       toast('Documento guardado', 'success');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setConflict(err.body?.['deleted'] ? 'deleted' : 'changed');
+      else if (err instanceof ApiError && err.body?.['script']) toast(String(err.body['error']), 'error');
       else toast('Error al guardar. Tus cambios siguen en el editor.', 'error');
     }
     setSaving(false);
