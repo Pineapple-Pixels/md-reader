@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useTheme } from '../hooks/useTheme';
-import { MoonIcon, SunIcon } from './Icons';
 
 type ActionBase = {
   label: string;
@@ -77,9 +75,6 @@ function ToolbarMenu({ action }: { action: ActionBase & { menu: ToolbarItem[] } 
 }
 
 export function Toolbar({ actions, children }: ToolbarProps) {
-  const { isDark, toggle } = useTheme();
-  const themeLabel = isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro';
-
   return (
     <div className="toolbar" data-noprint>
       {actions.map((action) => {
@@ -94,9 +89,6 @@ export function Toolbar({ actions, children }: ToolbarProps) {
         );
       })}
       {children}
-      <button className="theme-toggle icon-only" onClick={toggle} aria-label={themeLabel} data-tip={themeLabel}>
-        {isDark ? <SunIcon size={18} aria-hidden="true" /> : <MoonIcon size={18} aria-hidden="true" />}
-      </button>
     </div>
   );
 }

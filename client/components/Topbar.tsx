@@ -6,7 +6,7 @@ import { useScope } from '../hooks/useScope';
 import { useTheme } from '../hooks/useTheme';
 import { logout } from '../hooks/logout';
 import { useNavStore } from '../hooks/useNavStore';
-import { ChevronDownIcon, HamburgerIcon, UserIcon } from './Icons';
+import { ChevronDownIcon, HamburgerIcon, MoonIcon, SunIcon, UserIcon } from './Icons';
 import s from './Topbar.module.css';
 
 interface TopbarProps {
@@ -19,7 +19,8 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
   const publicOrg = scope.kind === 'public' ? scope.org : org?.slug;
   // Another org's public pages are labelled with that org, not the viewer's.
   const orgLabel = scope.kind === 'public' && scope.org !== org?.slug ? scope.org : org?.name;
-  const { themes, active, setActive } = useTheme();
+  const { themes, active, setActive, isDark, toggle } = useTheme();
+  const themeLabel = isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro';
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -103,6 +104,9 @@ export function Topbar({ onHamburgerClick }: TopbarProps) {
         <span className={s.topbarSpacer} />
 
         <div className={s.topbarRight} ref={userMenuRef}>
+          <button type="button" className={`${s.themeBtn} theme-toggle`} onClick={toggle} aria-label={themeLabel} data-tip={themeLabel}>
+            {isDark ? <SunIcon size={18} aria-hidden="true" /> : <MoonIcon size={18} aria-hidden="true" />}
+          </button>
           <button
             type="button"
             className={s.userBtn}

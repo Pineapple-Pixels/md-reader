@@ -243,6 +243,10 @@ test('should render MDX as a document without its imports or JSX comments', asyn
   await page.locator('.doc h1').click();
 
   await expect(page.getByText('Comentarios (linea 3)')).toBeVisible();
+  // The panel opens level with the action bar, clear of the tabs and the breadcrumbs.
+  const panel = (await page.locator('.inline-comment-panel').boundingBox())!;
+  const bar = (await page.locator('.toolbar').boundingBox())!;
+  expect(Math.abs(panel.y - bar.y)).toBeLessThanOrEqual(12);
 });
 
 test('should show an HTML document saved with a script without running it', async ({ page }) => {
