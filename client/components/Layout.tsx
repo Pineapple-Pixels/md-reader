@@ -138,3 +138,21 @@ function SearchLauncher() {
   if (!open) return null;
   return <Suspense fallback={null}><SearchModal onClose={close} /></Suspense>;
 }
+
+/** Admin and profile: the app's top bar over the page, without a sidebar; its tabs and menus point at /me. */
+export function AccountLayout() {
+  return (
+    <ScopeProvider scope={ME_SCOPE}>
+      <div className={s.appShell}>
+        <Topbar />
+        <main className={s.appMain}>
+          <Suspense fallback={<div className="container"><p className="loading-msg">Cargando...</p></div>}>
+            <Outlet />
+          </Suspense>
+        </main>
+      </div>
+    </ScopeProvider>
+  );
+}
+
+const ME_SCOPE: Scope = { kind: 'me' };

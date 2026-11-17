@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@shared/api';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { useTheme } from '../hooks/useTheme';
 import { AppearanceSection } from '../components/AppearanceSection';
 
 // Pagina de perfil self-service: cualquier user logueado puede cambiar su
@@ -13,7 +12,6 @@ import { AppearanceSection } from '../components/AppearanceSection';
 export function ProfilePage() {
   const { isAuthenticated, user, displayName: currentDisplayName, role, isLoading } = useAuth();
   const { toast } = useToast();
-  const { isDark, toggle } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -95,9 +93,6 @@ export function ProfilePage() {
         <h1>Mi perfil</h1>
         <div className="admin-header-actions">
           <Link to="/me" className="admin-back">Volver a docs</Link>
-          <button className="admin-back" onClick={toggle} aria-label={isDark ? 'Pasar a tema claro' : 'Pasar a tema oscuro'}>
-            {isDark ? 'Claro' : 'Oscuro'}
-          </button>
         </div>
       </div>
 
